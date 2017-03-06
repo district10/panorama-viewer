@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>PC: mousemove, Mobile: deviceorientation</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="user-scalable=no, initial-scale=1">
+    <style>
+        body {
+            margin: 0px;
+            overflow: hidden;
+            z-index: -1000;
+        }
+
+        .qr {
+            position: absolute;
+            left: 0px;
+            top: 0px;
+            margin: 0 auto;
+            overflow: hidden;
+            z-index: 1000;
+            opacity: 0.2;
+        }
+        .qr:hover {
+            opacity: 1.0;
+        }
+
+        .log {
+            position: absolute;
+            left: 0px;
+            bottom: 0px;
+            margin: 2px;
+            padding: 2px;
+            border: 1px solid white;
+            color: white;
+            font-size: 8px;
+            max-width: 50%;
+            max-height: 60%;
+            min-width: 200px;
+            background-color: rgba(0,0,0,0.4);
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+
+<div class="qr" id="qr"><img src="qr.png" alt="" style="width:150px;height:150px" /></div>
+<div id="container"></div>
+<div class="log"><pre><code id="log"></code></pre></div>
+
+<script src="jquery.min.js"></script>
+<script src="jquery.qrcode.min.js"></script>
+<script src="three.min.js"></script>
+<script src="DeviceOrientationControls.js"></script>
+<script src="dat.gui.min.js"></script>
+
+<script>
+    "use strict";
+
+    var Config = function() {
+        this.showLog = true;
+        this.showQR = true;
+        this.fov = 75;
+        this.fileInput = $('<input type="file" />');
+        this.fileInput.on("change", function(e){
+            var f = e.target.files[0];
+            if (f) {
+                var r = new FileReader();
+                r.onload = function(event) {
+                    material.map.image.src = event.target.result;
+                    material.map.needsUpdate = true;
+                };
+                r.readAsDataURL(f);
+            }
+        });
+        this.loadTexture = function() {
+            this.fileInput.click();
+        };
+        this.loadTextureTip = "图片拖到页面也可加载";
+    };
+    var config = new Config();
+    var isDesktop = !navigator.userAgent.match(/(iPhone|iPod|iPad|Android|BlackBerry|BB10|mobi|tablet|opera mini|nexus 7)/i);
+    if (!isDesktop) {
+        config.showQR = false;
+        $(".qr").hide();
+    }
+
+    var logElement = $("#log")[0];
+    function debug(msg) {
+        logElement.innerHTML = msg;
+    }
+
+    var container, camera, scene, renderer, controls, material;
+    var isUserInteracting = false;
+    var lon = 0, lat = 0, phi = 0, theta = 0;
+    var onPointerDownPointerX = 0, onPointerDownPointerY = 0, onPointerDownLon = 0, onPointerDownLat = 0;
+
+    window.addEventListener('load', function() {
+
+        var animate = function(){
+            window.requestAnimationFrame( animate );
+            if (isDesktop) {
+                if (lon > 360) { lon -= 360; }
+                if (lon <   0) { lon += 360; }
+                lat = Math.max( - 85, Math.min( 85, lat ) );
+                phi = THREE.Math.degToRad( 90 - lat );
+                theta = THREE.Math.degToRad( lon );
+                camera.target.x = 500 * Math.sin( phi ) * Math.cos( theta );
+                camera.target.y = 500 * Math.cos( phi );
+                camera.target.z = 500 * Math.sin( phi ) * Math.sin( theta );
+                camera.lookAt( camera.target );
+            } else {
+                controls.update();
+            }
+            debug( JSON.stringify({
+                "camera": {
+                    "getWorldDirection": camera.getWorldDirection(),
+                    "localToWorld(camera.up)": camera.localToWorld(camera.up.clone())
+                }
+            }, null, 4) );
+            renderer.render(scene, camera);
+        };
+
+        container = document.getElementById( 'container' );
+
+        camera = new THREE.PerspectiveCamera(config.fov, window.innerWidth / window.innerHeight, 1, 1000);
+        camera.target = new THREE.Vector3( 0, 0, 0 );
+
+        controls = new THREE.DeviceOrientationControls( camera );
+        if (isDesktop) {
+            controls.enabled = false;
+        }
+
+        scene = new THREE.Scene();
+
+        var geometry = new THREE.SphereGeometry( 500, 64, 32 );
+        geometry.scale( - 1, 1, 1 );
+        material = new THREE.MeshBasicMaterial( {
+            map: new THREE.TextureLoader().load( 'texture.jpg' )
+        } );
+        var mesh = new THREE.Mesh( geometry, material );
+        scene.add( mesh );
+
+        renderer = new THREE.WebGLRenderer({
+            antialias: true
+        });
+        renderer.setPixelRatio( window.devicePixelRatio );
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.domElement.style.position = 'absolute';
+        renderer.domElement.style.top = 0;
+        container.appendChild(renderer.domElement);
+
+        window.addEventListener('resize', function() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize( window.innerWidth, window.innerHeight );
+        }, false);
+
+        container.addEventListener( 'mousedown', function(event) {
+            event.preventDefault();
+            isUserInteracting = true;
+            onPointerDownPointerX = event.clientX;
+            onPointerDownPointerY = event.clientY;
+            onPointerDownLon = lon;
+            onPointerDownLat = lat;
+        }, false );
+        container.addEventListener( 'mousemove', function(event) {
+            if ( isUserInteracting === true ) {
+                lon = ( onPointerDownPointerX - event.clientX ) * 0.1 + onPointerDownLon;
+                lat = ( event.clientY - onPointerDownPointerY ) * 0.1 + onPointerDownLat;
+            }
+        }, false );
+        container.addEventListener( 'mouseup', function(event) {
+            isUserInteracting = false;
+        }, false );
+        container.addEventListener( 'wheel', function(event) {
+            var fov = camera.fov + event.deltaY * 0.05;
+            camera.fov = Math.round(fov);
+            config.fov = camera.fov;
+            camera.updateProjectionMatrix();
+        }, false );
+
+        container.addEventListener( 'dragover', function ( event ) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+        }, false );
+        container.addEventListener( 'dragenter', function ( event ) {
+            document.body.style.opacity = 0.5;
+        }, false );
+        container.addEventListener( 'dragleave', function ( event ) {
+            document.body.style.opacity = 1;
+        }, false );
+        container.addEventListener( 'drop', function ( event ) {
+            event.preventDefault();
+            var reader = new FileReader();
+            reader.addEventListener( 'load', function ( event ) {
+                material.map.image.src = event.target.result;
+                material.map.needsUpdate = true;
+            }, false );
+            reader.readAsDataURL( event.dataTransfer.files[ 0 ] );
+            document.body.style.opacity = 1;
+        }, false );
+
+        var gui = new dat.GUI();
+        gui.add(config, 'fov').min(10).max(100).step(1).name("视场角").onChange(function(value){
+            if (config.fov !== camera.fov) {
+                camera.fov = value;
+                camera.updateProjectionMatrix();
+            }
+        });
+        gui.add(config, 'showLog').name("显示调试信息").onFinishChange(function(show){
+            if (show) { $(".log").show(); } else { $(".log").hide(); }
+        });
+        gui.add(config, 'showQR').name("显示二维码").onFinishChange(function(show){
+            if (show) { $(".qr").show(); } else { $(".qr").hide(); }
+        });
+        gui.add(config, 'loadTexture').name("选择全景图");
+        gui.add(config, 'loadTextureTip').name("Tip");
+
+        animate();
+
+        if (window.location.toString().startsWith("http")) {
+            // $('#qr').qrcode(window.location);
+        }
+
+    }, false);
+
+</script>
+
+</body>
+</html>

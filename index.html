@@ -196,8 +196,8 @@
         }, false );
         container.addEventListener( 'wheel', function(event) {
             var fov = camera.fov + event.deltaY * 0.05;
-            camera.fov = Math.round(fov);
-            config.fov = camera.fov;
+            camera.fov = THREE.Math.clamp(Math.round(fov), 10, 100);
+            config.fov = camera.fov; gui.updateDisplay();
             camera.updateProjectionMatrix();
         }, false );
 
@@ -240,8 +240,6 @@
         });
         gui.add(config, 'loadTexture').name("选择全景图");
         gui.add(config, 'loadTextureTip').name("Tip");
-
-        // gui.updateDisplay();
 
         animate();
 

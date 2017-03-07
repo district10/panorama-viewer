@@ -39,13 +39,23 @@
             background-color: rgba(0,0,0,0.4);
             overflow-y: auto;
         }
+        .pic {
+            position: absolute;
+            right: 0px;
+            bottom: 0px;
+            margin: 2px;
+            padding: 2px;
+            border: 1px solid white;
+            background-color: rgba(0,0,0,0.4);
+        }
     </style>
 </head>
 <body>
 
-<div class="qr" id="qr"><a href="https://github.com/district10/panorama-viewer" title="Fork me on GitHub"><img src="qr.png" alt="" style="width:150px;height:150px" /></a></div>
+<div class="qr" id="qr"><a href="https://github.com/district10/panorama-viewer" title="扫码：在移动端打开；点击：Fork me on GitHub"><img src="qr.png" alt="" style="width:150px;height:150px" /></a></div>
 <div id="container"></div>
 <div class="log"><pre><code id="log"></code></pre></div>
+<div class="pic"><img id="pic" src="texture.jpg" style="width:300px;height:150px;" alt="原图" /></div>
 
 <script src="jquery.min.js"></script>
 <!--
@@ -59,8 +69,9 @@
     "use strict";
 
     var Config = function() {
-        this.showLog = true;
         this.showQR = true;
+        this.showLog = false;
+        this.showPic = false;
         this.fov = 75;
         this.fileInput = $('<input type="file" />');
         this.fileInput.on("change", function(e){
@@ -68,6 +79,7 @@
             if (f) {
                 var r = new FileReader();
                 r.onload = function(event) {
+                    $("#pic")[0].src = event.target.result;
                     material.map.image.src = event.target.result;
                     material.map.needsUpdate = true;
                 };
@@ -80,12 +92,16 @@
         this.loadTextureTip = "图片拖到页面也可加载";
     };
     var config = new Config();
-    var gui = new dat.GUI();
+
     var isDesktop = !navigator.userAgent.match(/(iPhone|iPod|iPad|Android|BlackBerry|BB10|mobi|tablet|opera mini|nexus 7)/i);
     if (!isDesktop) {
         config.showQR = false;
         $(".qr").hide();
     }
+    if (!config.showLog) { $(".log").hide(); }
+    if (!config.showPic) { $(".pic").hide(); }
+
+    var gui = new dat.GUI(); gui.closed = true;
 
     var logElement = $("#log")[0];
     function debug(msg) {
@@ -199,6 +215,7 @@
             event.preventDefault();
             var reader = new FileReader();
             reader.addEventListener( 'load', function ( event ) {
+                $("#pic")[0].src = event.target.result;
                 material.map.image.src = event.target.result;
                 material.map.needsUpdate = true;
             }, false );
@@ -212,6 +229,9 @@
                 camera.updateProjectionMatrix();
             }
         });
+        gui.add(config, 'showPic').name("显示原图").onFinishChange(function(show){
+            if (show) { $(".pic").show(); } else { $(".pic").hide(); }
+        });
         gui.add(config, 'showLog').name("显示调试信息").onFinishChange(function(show){
             if (show) { $(".log").show(); } else { $(".log").hide(); }
         });
@@ -220,6 +240,7 @@
         });
         gui.add(config, 'loadTexture').name("选择全景图");
         gui.add(config, 'loadTextureTip').name("Tip");
+
         // gui.updateDisplay();
 
         animate();

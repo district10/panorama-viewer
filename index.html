@@ -48,7 +48,9 @@
 <div class="log"><pre><code id="log"></code></pre></div>
 
 <script src="jquery.min.js"></script>
+<!--
 <script src="jquery.qrcode.min.js"></script>
+-->
 <script src="three.min.js"></script>
 <script src="DeviceOrientationControls.js"></script>
 <script src="dat.gui.min.js"></script>
@@ -78,6 +80,7 @@
         this.loadTextureTip = "图片拖到页面也可加载";
     };
     var config = new Config();
+    var gui = new dat.GUI();
     var isDesktop = !navigator.userAgent.match(/(iPhone|iPod|iPad|Android|BlackBerry|BB10|mobi|tablet|opera mini|nexus 7)/i);
     if (!isDesktop) {
         config.showQR = false;
@@ -110,12 +113,15 @@
                 camera.lookAt( camera.target );
             } else {
                 controls.update();
+                // TODO, calculate lon, lat
             }
             debug( JSON.stringify({
                 "camera": {
-                    "getWorldDirection": camera.getWorldDirection(),
-                    "localToWorld(camera.up)": camera.localToWorld(camera.up.clone())
+                    "getWorldDirection": camera.getWorldDirection()
+                  , "localToWorld(camera.up)": camera.localToWorld(camera.up.clone())
                 }
+              , "lon": lon
+              , "lat": lat
             }, null, 4) );
             renderer.render(scene, camera);
         };
@@ -200,7 +206,6 @@
             document.body.style.opacity = 1;
         }, false );
 
-        var gui = new dat.GUI();
         gui.add(config, 'fov').min(10).max(100).step(1).name("视场角").onChange(function(value){
             if (config.fov !== camera.fov) {
                 camera.fov = value;
@@ -215,6 +220,7 @@
         });
         gui.add(config, 'loadTexture').name("选择全景图");
         gui.add(config, 'loadTextureTip').name("Tip");
+        // gui.updateDisplay();
 
         animate();
 

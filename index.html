@@ -90,8 +90,12 @@
         this.loadTextureTip = "图片拖到页面也可加载";
         this.textureSrc = "texture1.jpg";
         this.resetView = function() {
-            lon = lat = 0;
+            this.lon = this.lat = 0;
         };
+
+        this.autoUpdateLon = false;
+        this.lon = 0;
+        this.lat = 0;
     };
     var config = new Config();
 
@@ -112,7 +116,7 @@
 
     var container, camera, scene, renderer, controls, material;
     var isUserInteracting = false;
-    var lon = 0, lat = 0, phi = 0, theta = 0;
+    var phi = 0, theta = 0;
     var onPointerDownPointerX = 0, onPointerDownPointerY = 0, onPointerDownLon = 0, onPointerDownLat = 0;
 
     function loadTexture(url) {
@@ -126,11 +130,14 @@
         var animate = function(){
             window.requestAnimationFrame( animate );
             if (isDesktop) {
-                if (lon > 360) { lon -= 360; }
-                if (lon <   0) { lon += 360; }
-                lat = Math.max( - 85, Math.min( 85, lat ) );
-                phi = THREE.Math.degToRad( 90 - lat );
-                theta = THREE.Math.degToRad( lon );
+                if (config.autoUpdateLon) {
+                    config.lon += 0.2;
+                }
+                if (config.lon > 360) { config.lon -= 360; }
+                if (config.lon <   0) { config.lon += 360; }
+                config.lat = Math.max( - 85, Math.min( 85, config.lat ) );
+                phi = THREE.Math.degToRad( 90 - config.lat );
+                theta = THREE.Math.degToRad( config.lon );
                 camera.target.x = 500 * Math.sin( phi ) * Math.cos( theta );
                 camera.target.y = 500 * Math.cos( phi );
                 camera.target.z = 500 * Math.sin( phi ) * Math.sin( theta );
@@ -144,8 +151,8 @@
                     "getWorldDirection": camera.getWorldDirection()
                   , "localToWorld(camera.up)": camera.localToWorld(camera.up.clone())
                 }
-              , "lon": lon
-              , "lat": lat
+              , "lon": config.lon
+              , "lat": config.lat
             }, null, 4) );
             renderer.render(scene, camera);
         };
@@ -190,13 +197,13 @@
             isUserInteracting = true;
             onPointerDownPointerX = event.clientX;
             onPointerDownPointerY = event.clientY;
-            onPointerDownLon = lon;
-            onPointerDownLat = lat;
+            onPointerDownLon = config.lon;
+            onPointerDownLat = config.lat;
         }, false );
         container.addEventListener( 'mousemove', function(event) {
             if ( isUserInteracting === true ) {
-                lon = ( onPointerDownPointerX - event.clientX ) * 0.1 + onPointerDownLon;
-                lat = ( event.clientY - onPointerDownPointerY ) * 0.1 + onPointerDownLat;
+                config.lon = ( onPointerDownPointerX - event.clientX ) * 0.1 + onPointerDownLon;
+                config.lat = ( event.clientY - onPointerDownPointerY ) * 0.1 + onPointerDownLat;
             }
         }, false );
         container.addEventListener( 'mouseup', function(event) {
@@ -229,7 +236,6 @@
             document.body.style.opacity = 1;
         }, false );
 
-        gui.add(config, 'resetView').name("重置方向");
         gui.add(config, 'fov').min(10).max(100).step(1).name("视场角").onChange(function(value){
             if (config.fov !== camera.fov) {
                 camera.fov = value;
@@ -245,11 +251,19 @@
         gui.add(config, 'showQR').name("显示二维码").onFinishChange(function(show){
             if (show) { $(".qr").show(); } else { $(".qr").hide(); }
         });
-        gui.add(config, 'loadTexture').name("选择全景图");
-        gui.add(config, 'loadTextureTip').name("Tip");
-        gui.add(config, 'textureSrc', { "仪器馆1": "texture1.jpg", "仪器馆2": "texture2.jpg", "Three.js 图": "texture.jpg" } ).onChange(function(value){
+
+        var tex = gui.addFolder('全景图');
+        tex.add(config, 'loadTexture').name("选择全景图");
+        tex.add(config, 'textureSrc', { "仪器馆1": "texture1.jpg", "仪器馆2": "texture2.jpg", "Three.js 图": "texture.jpg" } ).onChange(function(value){
             loadTexture( value );
         }).name("切换全景图");
+        tex.add(config, 'loadTextureTip').name("Tip");
+
+        var nav = gui.addFolder('导航');
+        nav.add(config, 'resetView').name("重置方向");
+        nav.add(config, 'autoUpdateLon').name("水平自动浏览");
+        nav.add(config, 'lon').min(0).max(360).step(1).name("Lon").listen();
+        nav.add(config, 'lat').min(-85).max(85).step(1).name("Lat").listen();
 
         animate();
 

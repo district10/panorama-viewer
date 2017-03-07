@@ -89,6 +89,9 @@
         };
         this.loadTextureTip = "图片拖到页面也可加载";
         this.textureSrc = "texture1.jpg";
+        this.resetView = function() {
+            lon = lat = 0;
+        };
     };
     var config = new Config();
 
@@ -226,6 +229,7 @@
             document.body.style.opacity = 1;
         }, false );
 
+        gui.add(config, 'resetView').name("重置方向");
         gui.add(config, 'fov').min(10).max(100).step(1).name("视场角").onChange(function(value){
             if (config.fov !== camera.fov) {
                 camera.fov = value;

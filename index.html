@@ -55,7 +55,7 @@
 <div class="qr" id="qr"><a href="https://github.com/district10/panorama-viewer" title="扫码：在移动端打开；点击：Fork me on GitHub"><img src="qr.png" alt="" style="width:150px;height:150px" /></a></div>
 <div id="container"></div>
 <div class="log"><pre><code id="log"></code></pre></div>
-<div class="pic"><img id="pic" src="texture.jpg" style="width:300px;height:150px;" alt="原图" /></div>
+<div class="pic"><img id="pic" src="texture1.jpg" style="width:300px;height:150px;" alt="原图" /></div>
 
 <script src="jquery.min.js"></script>
 <!--
@@ -90,6 +90,7 @@
             this.fileInput.click();
         };
         this.loadTextureTip = "图片拖到页面也可加载";
+        this.textureSrc = "texture1.jpg";
     };
     var config = new Config();
 
@@ -157,7 +158,7 @@
         var geometry = new THREE.SphereGeometry( 500, 64, 32 );
         geometry.scale( - 1, 1, 1 );
         material = new THREE.MeshBasicMaterial( {
-            map: new THREE.TextureLoader().load( 'texture.jpg' )
+            map: new THREE.TextureLoader().load( 'texture1.jpg' )
         } );
         var mesh = new THREE.Mesh( geometry, material );
         scene.add( mesh );
@@ -240,6 +241,11 @@
         });
         gui.add(config, 'loadTexture').name("选择全景图");
         gui.add(config, 'loadTextureTip').name("Tip");
+        gui.add(config, 'textureSrc', { "仪器馆1": "texture1.jpg", "仪器馆2": "texture2.jpg", "Three.js 图": "texture.jpg" } ).onChange(function(value){
+            material.map.image.src = value;
+            material.map.needsUpdate = true;
+            $("#pic")[0].src = value;
+        }).name("切换全景图");
 
         animate();
 

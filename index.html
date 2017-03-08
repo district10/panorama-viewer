@@ -96,6 +96,11 @@
         this.autoUpdateLon = false;
         this.lon = 0;
         this.lat = 0;
+
+        // examples
+        this.exampleDual = function(){
+            window.location = "dual.html";
+        }
     };
     var config = new Config();
 
@@ -259,11 +264,15 @@
         }).name("切换全景图");
         tex.add(config, 'loadTextureTip').name("Tip");
 
-        var nav = gui.addFolder('导航');
-        nav.add(config, 'resetView').name("重置方向");
-        nav.add(config, 'autoUpdateLon').name("水平自动浏览");
-        nav.add(config, 'lon').min(0).max(360).step(1).name("Lon").listen();
-        nav.add(config, 'lat').min(-85).max(85).step(1).name("Lat").listen();
+        if (isDesktop) {
+            var nav = gui.addFolder('导航');
+            nav.add(config, 'resetView').name("重置方向");
+            nav.add(config, 'autoUpdateLon').name("水平自动浏览");
+            nav.add(config, 'lon').min(0).max(360).step(1).name("Lon").listen();
+            nav.add(config, 'lat').min(-85).max(85).step(1).name("Lat").listen();
+        }
+        var ref = gui.addFolder('更多示例');
+        ref.add(config, 'exampleDual').name("全景图配准");
 
         animate();
 

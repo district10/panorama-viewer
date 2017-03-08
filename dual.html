@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <title>全景匹配工具</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="user-scalable=no, initial-scale=1">
+    <style>
+        body {
+            margin: 0px;
+            overflow: hidden;
+            z-index: -1000;
+        }
+
+        .pic {
+            position: absolute;
+            bottom: 0px;
+            margin: 2px;
+            padding: 2px;
+            border: 1px solid white;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .pic1 { left:  0px; }
+        .pic2 { right: 0px; }
+    </style>
+</head>
+<body>
+
+<div id="container"></div>
+<div class="pic pic1"><a href="texture1.jpg" target="_blank"><img id="pic1" src="texture1.jpg" style="width:300px;height:150px;" alt="左" /></a></div>
+<div class="pic pic2"><a href="texture2.jpg" target="_blank"><img id="pic2" src="texture2.jpg" style="width:300px;height:150px;" alt="右" /></a></div>
+
+<script src="jquery.min.js"></script>
+<script src="three.min.js"></script>
+<script src="DeviceOrientationControls.js"></script>
+<script src="dat.gui.min.js"></script>
+
+<script id="fragmentShader" type="x-shader/x-fragment">
+    #ifdef GL_ES
+    // precision highp float;
+    #endif
+
+    uniform sampler2D tOne;
+    uniform sampler2D tSec;
+    uniform float alpha;
+    uniform float offset;
+    uniform float imageWidth;
+    uniform float strength;
+
+    varying vec2 vUv;
+
+    vec4 sharp(sampler2D sampler, vec2 uv)
+    {
+        float r = 1.0/imageWidth;
+        // float strength = 9.0; //  effect strength
+        vec4 c0 = texture2D(sampler,uv);
+        vec4 c1 = texture2D(sampler,uv-vec2(2.0*r,.0));
+        vec4 c2 = texture2D(sampler,uv+vec2(2.0*r,.0));
+        vec4 c3 = texture2D(sampler,uv-vec2(.0,r));
+        vec4 c4 = texture2D(sampler,uv+vec2(.0,r));
+        vec4 c5 = c0+c1+c2+c3+c4;
+        c5 *= 0.2;
+        vec4 mi = min(c0,c1); mi = min(mi,c2); mi = min(mi,c3); mi = min(mi,c4);
+        vec4 ma = max(c0,c1); ma = max(ma,c2); ma = max(ma,c3); ma = max(ma,c4);
+        return clamp(mi,(strength+1.0)*c0-c5*strength,ma);
+    }
+
+    void main(void)
+    {
+        vec3 c;
+        // vec4 Ca = texture2D(tOne, vUv);
+        // vec4 Cb = texture2D(tSec, vec2(vUv.x+offset, vUv.y));
+        vec4 Ca = sharp(tOne, vUv);
+        vec4 Cb = sharp(tSec, vec2(vUv.x+offset, vUv.y));
+        c = Ca.rgb * alpha + Cb.rgb * (1.0-alpha);
+        gl_FragColor= vec4(c, 1.0);
+    }
+</script>
+<script id="vertexShader" type="x-shader/x-vertex">
+    varying vec2 vUv;
+
+    void main()
+    {
+        vUv = uv;
+        vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+        gl_Position = projectionMatrix * mvPosition;
+    }
+</script>
+
+<script>
+    "use strict";
+
+    var Config = function() {
+        this.showPic = false;
+        this.fov = 75;
+        (this.fileInput1 = $('<input type="file" />')).on("change", function(e){
+            var f = e.target.files[0];
+            if (f) {
+                var r;
+                (r = new FileReader()).onload = function(event) { loadTexture1( event.target.result ); };
+                r.readAsDataURL(f);
+            }
+        });
+        (this.fileInput2 = $('<input type="file" />')).on("change", function(e){
+            var f = e.target.files[0];
+            if (f) {
+                var r;
+                (r = new FileReader()).onload = function(event) { loadTexture2( event.target.result ); };
+                r.readAsDataURL(f);
+            }
+        });
+        this.loadTexture1 = function() { this.fileInput1.click(); };
+        this.loadTexture2 = function() { this.fileInput2.click(); };
+        this.lon = this.lat = 0;
+        this.alpha = 0.5;
+        this.offset = 0.0;
+        this.imageWidth = Number.MAX_VALUE;
+        this.strength = 10.0;
+    };
+    var config = new Config();
+    if (!config.showPic) { $(".pic").hide(); }
+
+    var gui = new dat.GUI(); gui.closed = true;
+    gui.add(config, 'fov').min(10).max(100).step(1).name("视场角").onChange(function(value){
+        if (config.fov !== camera.fov) {
+            camera.fov = value;
+            camera.updateProjectionMatrix();
+        }
+    });
+    gui.add(config, 'showPic').name("显示原图").onFinishChange(function(show){
+        if (show) { $(".pic").show(); } else { $(".pic").hide(); }
+    });
+    gui.add(config, 'loadTexture1').name("加载左（当前）全景图");
+    gui.add(config, 'loadTexture2').name("加载右（下一）全景图");
+    gui.add(config, 'offset').name("右图偏移量").min(-1.0).max(1.0).step(0.001).listen().onChange(function(value){
+    });
+    gui.add(config, 'alpha').name("颜色混合比例").min(0.0).max(1.0).step(0.01).listen().onChange(function(value){
+    });
+    gui.add(config, 'imageWidth', {
+        "不增强": Number.MAX_VALUE,
+        "增强1": 2000.0,
+        "增强2": 1000.0,
+        "增强3": 500.0
+    }).name("图像增强");
+    gui.add(config, 'strength').min(1.0).max(1000.0).step(1.0).name("增强效力");
+
+    var container, camera, scene, renderer, geometry, material, mesh, controls;
+    var isUserInteracting = false;
+    var phi = 0, theta = 0;
+    var onPointerDownPointerX = 0, onPointerDownPointerY = 0, onPointerDownLon = 0, onPointerDownLat = 0;
+
+    function loadTexture1(url) {
+        $("#pic1")[0].src = $("#pic1").parent()[0].href = url;
+        config.texture1.image.src = url;
+        config.texture1.needsUpdate = true;
+    }
+    function loadTexture2(url) {
+        $("#pic2")[0].src = $("#pic2").parent()[0].href = url;
+        config.texture2.image.src = url;
+        config.texture2.needsUpdate = true;
+    }
+
+    var isDesktop = !navigator.userAgent.match(/(iPhone|iPod|iPad|Android|BlackBerry|BB10|mobi|tablet|opera mini|nexus 7)/i);
+
+    window.addEventListener('load', function() {
+        var animate = function(){
+            window.requestAnimationFrame( animate );
+
+            config.uniforms.alpha.value = config.alpha;
+            config.uniforms.offset.value = config.offset;
+            config.uniforms.strength.value = config.strength;
+            config.uniforms.imageWidth.value = config.imageWidth;
+
+            if (isDesktop) {
+                if (config.lon > 360) { config.lon -= 360; }
+                if (config.lon <   0) { config.lon += 360; }
+                config.lat = Math.max( - 85, Math.min( 85, config.lat ) );
+                phi = THREE.Math.degToRad( 90 - config.lat );
+                theta = THREE.Math.degToRad( config.lon );
+                camera.target.x = 500 * Math.sin( phi ) * Math.cos( theta );
+                camera.target.y = 500 * Math.cos( phi );
+                camera.target.z = 500 * Math.sin( phi ) * Math.sin( theta );
+                camera.lookAt( camera.target );
+            } else {
+                controls.update();
+                // TODO, calculate lon, lat
+            }
+
+            renderer.render(scene, camera);
+        };
+
+        camera = new THREE.PerspectiveCamera(config.fov, window.innerWidth / window.innerHeight, 1, 1000);
+        camera.target = new THREE.Vector3( 0, 0, 0 );
+
+        controls = new THREE.DeviceOrientationControls( camera );
+        if (isDesktop) {
+            controls.enabled = false;
+        }
+
+        scene = new THREE.Scene();
+
+        config.texture1 = new THREE.TextureLoader().load("texture1.jpg");
+        config.texture2 = new THREE.TextureLoader().load("texture2.jpg");
+        config.texture1.wrapS = config.texture2.wrapS = THREE.RepeatWrapping;
+        config.texture1.wrapT = config.texture2.wrapT = THREE.RepeatWrapping;
+        config.uniforms = {
+            tOne: { type: "t", value: config.texture1 },
+            tSec: { type: "t", value: config.texture2 },
+            alpha: { type: "f", value: 0.5 },
+            offset: { type: "f", value: 0.0 },
+            imageWidth: { type: "f", value: Number.MAX_VALUE },
+            strength: { type: "f", value: 10.0 }
+        };
+        config.attributes = {};
+        // attributes: config.attributes,
+
+        geometry = new THREE.SphereGeometry( 500, 64, 32 ); geometry.scale( - 1, 1, 1 );
+        material = new THREE.ShaderMaterial({
+            uniforms: config.uniforms,
+            vertexShader: document.getElementById( 'vertexShader' ).textContent,
+            fragmentShader: document.getElementById( 'fragmentShader' ).textContent,
+            side: THREE.DoubleSide
+        });
+        mesh = new THREE.Mesh( geometry, material );
+        scene.add( mesh );
+
+        window.addEventListener( 'keydown', function(event){
+            //event.preventDefault();
+            switch ( event.keyCode ) {
+
+                case 38: /*up*/
+                    config.alpha += 0.01; if (config.alpha > 1.0) { config.alpha = 1.0; }
+                    break;
+                case 40: /*down*/
+                    config.alpha -= 0.01; if (config.alpha < 0.0) { config.alpha = 0.0; }
+                    break;
+
+                case 37: /*left*/
+                    config.offset -= 0.001;
+                    config.offset = THREE.Math.clamp(config.offset, -1.0, +1.0);
+                    break;
+                case 39: /*right*/
+                    config.offset += 0.001;
+                    config.offset = THREE.Math.clamp(config.offset, -1.0, +1.0);
+                    break;
+
+                case 13: /*enter*/ // reset
+                    config.offset = 0.0;
+                    config.alpha = 0.5;
+                    break;
+
+                case 49: /*1*/ config.alpha = 1.0; break;
+                case 50: /*2*/ config.alpha = 0.0; break;
+
+                default:
+                    console.log("keyCode: "+event.keyCode);
+            }
+        }, false );
+
+        container = document.getElementById( 'container' );
+        renderer = new THREE.WebGLRenderer({
+            antialias: true
+        });
+        renderer.setPixelRatio( window.devicePixelRatio );
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.domElement.style.position = 'absolute';
+        renderer.domElement.style.top = 0;
+        container.appendChild(renderer.domElement);
+
+        window.addEventListener('resize', function() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize( window.innerWidth, window.innerHeight );
+        }, false);
+
+        container.addEventListener( 'mousedown', function(event) {
+            event.preventDefault();
+            isUserInteracting = true;
+            onPointerDownPointerX = event.clientX;
+            onPointerDownPointerY = event.clientY;
+            onPointerDownLon = config.lon;
+            onPointerDownLat = config.lat;
+        }, false );
+        container.addEventListener( 'mousemove', function(event) {
+            if ( isUserInteracting === true ) {
+                config.lon = ( onPointerDownPointerX - event.clientX ) * 0.1 + onPointerDownLon;
+                config.lat = ( event.clientY - onPointerDownPointerY ) * 0.1 + onPointerDownLat;
+            }
+        }, false );
+        container.addEventListener( 'mouseup', function(event) {
+            isUserInteracting = false;
+        }, false );
+        container.addEventListener( 'wheel', function(event) {
+            var fov = camera.fov + event.deltaY * 0.05;
+            camera.fov = THREE.Math.clamp(Math.round(fov), 10, 100);
+            config.fov = camera.fov; gui.updateDisplay();
+            camera.updateProjectionMatrix();
+        }, false );
+
+        animate();
+
+    }, false);
+
+
+</script>
+
+</body>
+</html>

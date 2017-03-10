@@ -58,9 +58,6 @@
 <div class="pic"><a title="点击查看原图" href="texture1.jpg" target="_blank"><img id="pic" src="texture1.jpg" style="width:300px;height:150px;" alt="原图" /></a></div>
 
 <script src="jquery.min.js"></script>
-<!--
-<script src="jquery.qrcode.min.js"></script>
--->
 <script src="three.min.js"></script>
 <script src="DeviceOrientationControls.js"></script>
 <script src="dat.gui.min.js"></script>
@@ -275,10 +272,6 @@
         ref.add(config, 'exampleDual').name("全景图配准");
 
         animate();
-
-        if (window.location.toString().startsWith("http")) {
-            // $('#qr').qrcode(window.location);
-        }
 
     }, false);
 

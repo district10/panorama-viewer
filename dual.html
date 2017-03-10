@@ -4,6 +4,7 @@
     <title>全景匹配工具</title>
     <meta charset="utf-8">
     <meta name="viewport" content="user-scalable=no, initial-scale=1">
+    <link rel="stylesheet" href="jquery.contextMenu.css" type="text/css"/>
     <style>
         body {
             margin: 0px;
@@ -21,18 +22,44 @@
         }
         .pic1 { left:  0px; }
         .pic2 { right: 0px; }
+
+        #context-menu {
+            // visibility: hidden;
+            background-color: white;
+            border: 1px solid grey;
+            width: 200px;
+            height: 300px;
+        }
     </style>
 </head>
 <body>
 
 <div id="container"></div>
-<div class="pic pic1"><a href="texture1.jpg" target="_blank"><img id="pic1" src="texture1.jpg" style="width:300px;height:150px;" alt="左" /></a></div>
-<div class="pic pic2"><a href="texture2.jpg" target="_blank"><img id="pic2" src="texture2.jpg" style="width:300px;height:150px;" alt="右" /></a></div>
+<div class="pic pic1"><a href="texture1.jpg" target="_blank"><img id="pic1" src="texture1.jpg" style="width:200px;height:100px;" alt="左" /></a></div>
+<div class="pic pic2"><a href="texture2.jpg" target="_blank"><img id="pic2" src="texture2.jpg" style="width:200px;height:100px;" alt="右" /></a></div>
 
 <script src="jquery.min.js"></script>
 <script src="three.min.js"></script>
 <script src="DeviceOrientationControls.js"></script>
 <script src="dat.gui.min.js"></script>
+<script src="jquery.ui.position.js"></script>
+<script src="jquery.contextMenu.js"></script>
+<script src="CubemapToEquirectangular.js"></script>
+
+<script id="vertexShader" type="x-shader/x-vertex">
+    varying vec2 vUv;
+    // varying vec2 vUv2;
+    uniform float uvOffsetU;
+    uniform float uvOffsetV;
+
+    void main()
+    {
+        // 在这里内插，可以求到一个 uv mapping
+        vUv = uv;
+        // vUv2 = uv + vec2(uvOffsetU, uvOffsetV);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+    }
+</script>
 
 <script id="fragmentShader" type="x-shader/x-fragment">
     #ifdef GL_ES
@@ -47,6 +74,7 @@
     uniform float strength;
 
     varying vec2 vUv;
+    // varying vec2 vUv2; 这样我们就有两个 uvMapping 了
 
     vec4 sharp(sampler2D sampler, vec2 uv)
     {
@@ -67,22 +95,10 @@
     void main(void)
     {
         vec3 c;
-        // vec4 Ca = texture2D(tOne, vUv);
-        // vec4 Cb = texture2D(tSec, vec2(vUv.x+offset, vUv.y));
         vec4 Ca = sharp(tOne, vUv);
         vec4 Cb = sharp(tSec, vec2(vUv.x+offset, vUv.y));
         c = Ca.rgb * alpha + Cb.rgb * (1.0-alpha);
         gl_FragColor= vec4(c, 1.0);
-    }
-</script>
-<script id="vertexShader" type="x-shader/x-vertex">
-    varying vec2 vUv;
-
-    void main()
-    {
-        vUv = uv;
-        vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
-        gl_Position = projectionMatrix * mvPosition;
     }
 </script>
 
@@ -92,7 +108,7 @@
     var Config = function() {
         this.showPic = false;
         this.fov = 75;
-        (this.fileInput1 = $('<input type="file" />')).on("change", function(e){
+        (this.fileInputTexture1 = $('<input type="file" />')).on("change", function(e){
             var f = e.target.files[0];
             if (f) {
                 var r;
@@ -100,7 +116,7 @@
                 r.readAsDataURL(f);
             }
         });
-        (this.fileInput2 = $('<input type="file" />')).on("change", function(e){
+        (this.fileInputTexture2 = $('<input type="file" />')).on("change", function(e){
             var f = e.target.files[0];
             if (f) {
                 var r;
@@ -108,13 +124,47 @@
                 r.readAsDataURL(f);
             }
         });
-        this.loadTexture1 = function() { this.fileInput1.click(); };
-        this.loadTexture2 = function() { this.fileInput2.click(); };
+        (this.fileInputMatches = $('<input type="file" />')).on("change", function(e){
+            var f = e.target.files[0];
+            if (f) {
+                var r;
+                (r = new FileReader()).onload = function(event) { loadMatches( event.target.result ); };
+                r.readAsText(f);
+            }
+        });
+
+        this.loadTexture1 = function() { this.fileInputTexture1.click(); };
+        this.loadTexture2 = function() { this.fileInputTexture2.click(); };
+        this.loadMatches = function() { this.fileInputMatches.click(); };
+
         this.lon = this.lat = 0;
         this.alpha = 0.5;
-        this.offset = 0.0;
+
+        this.showOffset = false;
+        this.offset = this.offset0 = 0.014;
+        this.uvOffsetU = this.uvOffsetU0 = 0.0;
+        this.uvOffsetV = this.uvOffsetV0 = 0.0;
+
         this.imageWidth = Number.MAX_VALUE;
         this.strength = 10.0;
+
+        this.featureBall = new THREE.SphereGeometry( 1, 64, 32);
+        // this.featureMaterial = new THREE.MeshBasicMaterial( {color: 0xffff } );
+        this.featureMaterial = new THREE.MeshBasicMaterial( { color: 0xff0000, transparent: true, opacity: 0.0 } );
+        this.featureMaterial1 = new THREE.MeshBasicMaterial( { color: 0x00ff00, side: THREE.BackSide } );
+        this.featureMaterial2 = new THREE.MeshBasicMaterial( { color: 0x0000ff, side: THREE.BackSide } );
+
+        this.savePanorama = function() {
+            var equiManaged = new CubemapToEquirectangular( renderer, true );
+            equiManaged.setSize( 2048, 1024 );
+            equiManaged.update( camera, scene );
+        };
+
+        this.showGrid1 = true;
+        this.showGrid2 = true;
+
+        this.featurePointScale = 1.0;
+        this.featurePointScale0 = 1.0;
     };
     var config = new Config();
     if (!config.showPic) { $(".pic").hide(); }
@@ -131,10 +181,50 @@
     });
     gui.add(config, 'loadTexture1').name("加载左（当前）全景图");
     gui.add(config, 'loadTexture2').name("加载右（下一）全景图");
-    gui.add(config, 'offset').name("右图偏移量").min(-1.0).max(1.0).step(0.001).listen().onChange(function(value){
+    gui.add(config, 'loadMatches').name("加载匹配点");
+    gui.add(config, 'savePanorama').name("把场景存成全景图");
+
+    gui.add(config, 'showGrid1').name("显示场景 1 方向网格").listen().onChange(function(vis){
+        config.grid1.visible = vis;
     });
-    gui.add(config, 'alpha').name("颜色混合比例").min(0.0).max(1.0).step(0.01).listen().onChange(function(value){
+    gui.add(config, 'showGrid2').name("显示场景 2 方向网格").listen().onChange(function(vis){
+        config.grid2.visible = vis;
     });
+
+    gui.add(config, 'featurePointScale').min(0.2).max(5).step(0.2).onChange(function(value){
+        var scale = value / config.featurePointScale0;
+        config.featureBall.scale(scale, scale, scale);
+        config.featurePointScale0 = value;
+    }).name("特征点大小");
+
+    var onShowOffset = function (show) {
+        if (show) {
+            config.offsetController = offsetFolder.add(config, 'offset').name("右图偏移量").min(-1.0).max(1.0).step(0.001).listen().onChange(function(v){
+                matchesGroup2.matrix.identity();
+                matchesGroup2.applyMatrix(new THREE.Matrix4().makeRotationY(config.offset*Math.PI*2.0));
+            })
+        } else {
+            if (config.offsetController) {
+                offsetFolder.remove(config.offsetController);
+            }
+        }
+    };
+    var offsetFolder = gui.addFolder('偏移量');
+    offsetFolder.add(config, 'showOffset').onChange(onShowOffset).name("修改偏移量");
+
+    var onAlphaChange = function (value) {
+        if (value > 0.8) {
+            config.featureMaterial1.visible = true;
+            config.featureMaterial2.visible = false;
+        } else if (value < 0.2) {
+            config.featureMaterial1.visible = false;
+            config.featureMaterial2.visible = true;
+        } else {
+            config.featureMaterial1.visible = true;
+            config.featureMaterial2.visible = true;
+        }
+    };
+    gui.add(config, 'alpha').name("颜色混合比例").min(0.0).max(1.0).step(0.01).listen().onChange(onAlphaChange);
     gui.add(config, 'imageWidth', {
         "不增强": Number.MAX_VALUE,
         "增强1": 2000.0,
@@ -143,7 +233,18 @@
     }).name("图像增强");
     gui.add(config, 'strength').min(1.0).max(1000.0).step(1.0).name("增强效力");
 
+    var uvFolder = gui.addFolder("UV 偏移");
+    uvFolder.add(config, 'uvOffsetU').min(-1.0).max(1.0).step(0.01).name("水平");
+    uvFolder.add(config, 'uvOffsetV').min(-1.0).max(1.0).step(0.01).name("垂直");
+
     var container, camera, scene, renderer, geometry, material, mesh, controls;
+    var matchesGroup1, matchesGroup2;
+
+    var objects = [];
+    var mouse = new THREE.Vector3();
+    var raycaster = new THREE.Raycaster();
+    var INTERSECTED, SELECTED;
+
     var isUserInteracting = false;
     var phi = 0, theta = 0;
     var onPointerDownPointerX = 0, onPointerDownPointerY = 0, onPointerDownLon = 0, onPointerDownLat = 0;
@@ -165,10 +266,21 @@
         var animate = function(){
             window.requestAnimationFrame( animate );
 
+            // matched points
+            if (config.matches) {
+                if (config.initedMaches) {
+                    // nothing
+                } else {
+                    config.initedMaches = true;
+                }
+            }
+
             config.uniforms.alpha.value = config.alpha;
             config.uniforms.offset.value = config.offset;
             config.uniforms.strength.value = config.strength;
             config.uniforms.imageWidth.value = config.imageWidth;
+            config.uniforms.uvOffsetU.value = config.uvOffsetU;
+            config.uniforms.uvOffsetV.value = config.uvOffsetV;
 
             if (isDesktop) {
                 if (config.lon > 360) { config.lon -= 360; }
@@ -208,7 +320,9 @@
             alpha: { type: "f", value: 0.5 },
             offset: { type: "f", value: 0.0 },
             imageWidth: { type: "f", value: Number.MAX_VALUE },
-            strength: { type: "f", value: 10.0 }
+            strength: { type: "f", value: 10.0 },
+            uvOffsetU: { type: "f", value: 0.0 },
+            uvOffsetV: { type: "f", value: 0.0 }
         };
         config.attributes = {};
         // attributes: config.attributes,
@@ -223,29 +337,62 @@
         mesh = new THREE.Mesh( geometry, material );
         scene.add( mesh );
 
+        matchesGroup1 = new THREE.Group(); scene.add(matchesGroup1);
+        var grid1 = new THREE.GridHelper(1000, 40, 0xff0000, 0x00ff00);
+        grid1.position.set(0,-300,0);
+        matchesGroup1.add(grid1);
+        config.grid1 = grid1;
+
+        matchesGroup2 = new THREE.Group(); scene.add(matchesGroup2);
+        var grid2 = new THREE.GridHelper(1000, 40, 0xff0000, 0x0000ff);
+        grid2.position.set(0,-300,0);
+        matchesGroup2.add(grid2);
+        config.grid2 = grid2;
+
+        matchesGroup2.matrix.identity();
+        matchesGroup2.applyMatrix(new THREE.Matrix4().makeRotationY(config.offset*Math.PI*2.0));
+
         window.addEventListener( 'keydown', function(event){
-            //event.preventDefault();
+            // event.preventDefault();
             switch ( event.keyCode ) {
+
+                case 70: /*f*/
+                    config.showOffset = !config.showOffset;
+                    onShowOffset(config.showOffset);
+                    break;
 
                 case 38: /*up*/
                     config.alpha += 0.01; if (config.alpha > 1.0) { config.alpha = 1.0; }
+                    onAlphaChange(config.alpha);
                     break;
                 case 40: /*down*/
                     config.alpha -= 0.01; if (config.alpha < 0.0) { config.alpha = 0.0; }
+                    onAlphaChange(config.alpha);
                     break;
 
                 case 37: /*left*/
-                    config.offset -= 0.001;
-                    config.offset = THREE.Math.clamp(config.offset, -1.0, +1.0);
+                    if (config.showOffset) {
+                        var offset = config.offset - 0.001;
+                        config.offset = THREE.Math.clamp(offset, -1.0, +1.0);
+                        matchesGroup2.matrix.identity();
+                        matchesGroup2.applyMatrix(new THREE.Matrix4().makeRotationY(config.offset*Math.PI*2.0));
+                    }
                     break;
                 case 39: /*right*/
-                    config.offset += 0.001;
-                    config.offset = THREE.Math.clamp(config.offset, -1.0, +1.0);
+                    if (config.showOffset) {
+                        var offset = config.offset + 0.001;
+                        config.offset = THREE.Math.clamp(offset, -1.0, +1.0);
+                        matchesGroup2.matrix.identity();
+                        matchesGroup2.applyMatrix(new THREE.Matrix4().makeRotationY(config.offset*Math.PI*2.0));
+                    }
                     break;
 
                 case 13: /*enter*/ // reset
-                    config.offset = 0.0;
+                    config.offset = config.offset0;
                     config.alpha = 0.5;
+                    matchesGroup2.matrix.identity();
+                    matchesGroup2.applyMatrix(new THREE.Matrix4().makeRotationY(config.offset*Math.PI*2.0));
+                    config.featureMaterial1.visible = config.featureMaterial2.visible = true;
                     break;
 
                 case 49: /*1*/ config.alpha = 1.0; break;
@@ -273,7 +420,7 @@
         }, false);
 
         container.addEventListener( 'mousedown', function(event) {
-            event.preventDefault();
+            // event.preventDefault();
             isUserInteracting = true;
             onPointerDownPointerX = event.clientX;
             onPointerDownPointerY = event.clientY;
@@ -281,6 +428,8 @@
             onPointerDownLat = config.lat;
         }, false );
         container.addEventListener( 'mousemove', function(event) {
+            mouse.x = ( event.clientX - container.offsetLeft ) / container.clientWidth * 2 - 1; //  (-1, 1) | ( 1, 1)
+            mouse.y = 1 - ( event.clientY - container.offsetTop ) / container.clientHeight * 2;
             if ( isUserInteracting === true ) {
                 config.lon = ( onPointerDownPointerX - event.clientX ) * 0.1 + onPointerDownLon;
                 config.lat = ( event.clientY - onPointerDownPointerY ) * 0.1 + onPointerDownLat;
@@ -296,10 +445,116 @@
             camera.updateProjectionMatrix();
         }, false );
 
+        $.get("03_features.txt", function(text) {
+            loadMatches(text);
+        }).fail(function(err) {
+            console.log("加载匹配点失败（开服务器了？），你可以手动加载。");
+        });
+
         animate();
 
     }, false);
 
+    function debugLonLat(x, y, r) {
+        var x = x || 0;         var lon = x*360;
+        var y = y || 0.5;       var lat = (0.5-y)*180;
+        var t = THREE.Math.degToRad( x*360 );      // 0~360
+        var p = THREE.Math.degToRad((0.5-y)*180);  // -90~90
+        var r = r || 100;
+        var px = r * Math.cos( p ) * Math.cos( t );
+        var py = r * Math.sin( p );
+        var pz = r * Math.cos( p ) * Math.sin( t );
+        return { x: px, y: py, z: pz };
+    }
+
+    function setObjectInSphere(obj, x, y) {
+        var pos = debugLonLat(x, y, 200);
+        obj.position.x = pos.x;
+        obj.position.y = pos.y;
+        obj.position.z = pos.z;
+    }
+
+    function createFeaturePoint(material) {
+        var material = material || config.featureMaterial1;
+        var pointGroup = new THREE.Group();
+        var point = new THREE.Mesh( config.featureBall, config.featureMaterial );
+        var coat  = new THREE.Mesh( config.featureBall, material);
+        coat.scale.multiplyScalar(1.2);
+        pointGroup.add( point );
+        pointGroup.add( coat );
+        return pointGroup;
+    }
+
+    function addMatch(match) {
+
+        var fp1 = createFeaturePoint(config.featureMaterial1);
+        setObjectInSphere(fp1, match[0].x, match[0].y);
+        matchesGroup1.add(fp1);
+
+        var fp2 = createFeaturePoint(config.featureMaterial2);
+        setObjectInSphere(fp2, match[1].x, match[1].y);
+        matchesGroup2.add(fp2);
+
+    }
+
+    function addMatches() {
+        if (config.matches) {
+            for (var i = 0, n = config.matches.length; i < n; ++i) {
+                var match = config.matches[i];
+                addMatch(match);
+            }
+        }
+    }
+
+    function loadMatches(text) {
+        var lines = text.split("\n");
+        config.matches = [];
+        for (var i = 1, nline = lines.length; i < nline; ++i) {
+            var coords = lines[i].split("<->");
+            if (coords.length === 2) {
+                var t1xy = coords[0].split(",");
+                var t2xy = coords[1].split(",");
+                if (t1xy.length === 2 && t2xy.length === 2) {
+                    var match = [
+                        {
+                            "x": parseFloat(t1xy[0]),
+                            "y": parseFloat(t1xy[1])
+                        },
+                        {
+                            "x": parseFloat(t2xy[0]),
+                            "y": parseFloat(t2xy[1])
+                        }
+                    ];
+                    config.matches.push(match);
+                }
+            }
+        }
+        addMatches();
+        console.log("Loaded #" + config.matches.length + " matches.");
+    }
+
+    $.contextMenu({
+        selector: 'body',
+        selectableSubMenu: true,
+        autoHide: true,
+        // className: 'contextmenu-custom contextmenu-custom',
+        events: {
+            show : function(options){
+                // ...
+            },
+            hide : function(options){
+                // ...
+            }
+        },
+        items: {
+            copy: {
+                name: "Copy",
+                callback: function(key, opt){
+                    alert("Clicked on " + key);
+                }
+            }
+        }
+    });
 
 </script>
 

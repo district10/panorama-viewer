@@ -11,6 +11,11 @@
             overflow: hidden;
             z-index: -1000;
         }
+        /* cursors: [JavaScript - Mouse Cursor Styles](http://www.javascripter.net/faq/stylesc.htm) */
+        body.move, body.move *                   { cursor: move !important; }
+        body.crosshair, body.crosshair *        { cursor: crosshair !important; }
+        body.pointer, body.pointer *             { cursor: pointer !important; }
+        body.all-scroll, body.all-scroll *      { cursor: all-scroll !important; }
 
         .pic {
             position: absolute;
@@ -20,6 +25,20 @@
             border: 1px solid white;
             background-color: rgba(0,0,0,0.4);
         }
+        #peek, #peek1, #peek2 {
+            position: absolute;
+            left: 10px;
+            width: 200px;
+            height: 200px;
+            margin: 0;
+            padding: 0;
+            border: 1px solid white;
+            background-color: black;
+        }
+        #peek  { top: 020px; }
+        #peek1 { top: 140px; }
+        #peek2 { top: 360px; }
+
         .pic1 { left:  0px; }
         .pic2 { right: 0px; }
 
@@ -35,6 +54,10 @@
 <body>
 
 <div id="container"></div>
+<canvas id="peek"></canvas>
+<canvas id="peek1"></canvas>
+<canvas id="peek2"></canvas>
+
 <div class="pic pic1"><a href="texture1.jpg" target="_blank"><img id="pic1" src="texture1.jpg" style="width:200px;height:100px;" alt="左" /></a></div>
 <div class="pic pic2"><a href="texture2.jpg" target="_blank"><img id="pic2" src="texture2.jpg" style="width:200px;height:100px;" alt="右" /></a></div>
 
@@ -45,6 +68,7 @@
 <script src="jquery.ui.position.js"></script>
 <script src="jquery.contextMenu.js"></script>
 <script src="CubemapToEquirectangular.js"></script>
+<script src="tween.min.js"></script>
 
 <script id="vertexShader" type="x-shader/x-vertex">
     varying vec2 vUv;
@@ -106,6 +130,7 @@
     "use strict";
 
     var Config = function() {
+        var _this = this;
         this.showPic = false;
         this.fov = 75;
         (this.fileInputTexture1 = $('<input type="file" />')).on("change", function(e){
@@ -165,6 +190,54 @@
 
         this.featurePointScale = 1.0;
         this.featurePointScale0 = 1.0;
+
+        this.modeEditNode = false;
+        this.needUpdateScreenshot = false;
+
+        this.draw = (function () {
+            var ctx = {
+                "peek": $("#peek")[0].getContext("2d"),
+                "peek1": $("#peek1")[0].getContext("2d"),
+                "peek2": $("#peek2")[0].getContext("2d")
+            };
+            // void ctx.drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight); [CanvasRenderingContext2D.drawImage() - Web APIs | MDN](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/drawImage)
+            return function (c, sx, sy, sw, sh, dx, dy, dw, dh) {
+                ctx[c].drawImage(renderer.domElement, sx, sy, sw, sh, dx, dy, dw, dh);
+            }
+        })();
+
+        this.freezeInteraction = false;
+        this.naiveDual = function() {
+            _this.freezeInteraction = true;
+            _this.alpha0 = _this.alpha;
+            // .easing(TWEEN.Easing.Quadratic.In)
+            _this.tween0 = new TWEEN.Tween(_this)
+                .to({ alpha: 1.0 }, 1000)
+                .easing(TWEEN.Easing.Elastic.InOut)
+                .onComplete(function(){ console.log("tween 0 done"); });
+
+            var tween1 = new TWEEN.Tween(_this)
+                .to({ lon: 165 }, 2000)
+                .easing(TWEEN.Easing.Elastic.InOut)
+                .onUpdate(function(){
+                    console.log("lon:"+_this.lon);
+                })
+                .onComplete(function(){ console.log("tween 1 done"); });
+
+            var tween2 = new TWEEN.Tween(_this)
+                .to({ alpha: 0.0 }, 3000)
+                .easing(TWEEN.Easing.Elastic.InOut)
+                .onComplete(function(){ console.log("tween 2 done"); });
+
+            _this.tween0.chain(tween1).chain(tween2).start()
+                .onComplete(function(){
+                    setTimeout(function(){
+                        console.log("all tween done");
+                        _this.freezeInteraction = false;
+                        // _this.alpha = _this.alpha0;
+                    }, 200);
+                });
+        }
     };
     var config = new Config();
     if (!config.showPic) { $(".pic").hide(); }
@@ -191,11 +264,13 @@
         config.grid2.visible = vis;
     });
 
-    gui.add(config, 'featurePointScale').min(0.2).max(5).step(0.2).onChange(function(value){
+    config.onFeaturePointScale = function() {
+        var value = config.featurePointScale;
         var scale = value / config.featurePointScale0;
         config.featureBall.scale(scale, scale, scale);
         config.featurePointScale0 = value;
-    }).name("特征点大小");
+    };
+    gui.add(config, 'featurePointScale').min(0.2).max(5).step(0.2).onChange(config.onFeaturePointScale).name("特征点大小");
 
     var onShowOffset = function (show) {
         if (show) {
@@ -237,10 +312,25 @@
     uvFolder.add(config, 'uvOffsetU').min(-1.0).max(1.0).step(0.01).name("水平");
     uvFolder.add(config, 'uvOffsetV').min(-1.0).max(1.0).step(0.01).name("垂直");
 
+    gui.add(config, 'modeEditNode').listen().onChange(function(active){
+        if (active) {
+        } else {
+        }
+    }).name("编辑节点");
+
+    var setCursorStyle = function(style) {
+        $("body").removeClass();
+        if (style) {
+            $("body").addClass(style);
+        }
+    };
+
     var container, camera, scene, renderer, geometry, material, mesh, controls;
     var matchesGroup1, matchesGroup2;
 
     var objects = [];
+    var intersects = [];
+    var lastIntersect;
     var mouse = new THREE.Vector3();
     var raycaster = new THREE.Raycaster();
     var INTERSECTED, SELECTED;
@@ -263,17 +353,8 @@
     var isDesktop = !navigator.userAgent.match(/(iPhone|iPod|iPad|Android|BlackBerry|BB10|mobi|tablet|opera mini|nexus 7)/i);
 
     window.addEventListener('load', function() {
-        var animate = function(){
-            window.requestAnimationFrame( animate );
-
-            // matched points
-            if (config.matches) {
-                if (config.initedMaches) {
-                    // nothing
-                } else {
-                    config.initedMaches = true;
-                }
-            }
+        var animate = function(time) {
+            TWEEN.update(time);
 
             config.uniforms.alpha.value = config.alpha;
             config.uniforms.offset.value = config.offset;
@@ -285,19 +366,36 @@
             if (isDesktop) {
                 if (config.lon > 360) { config.lon -= 360; }
                 if (config.lon <   0) { config.lon += 360; }
-                config.lat = Math.max( - 85, Math.min( 85, config.lat ) );
-                phi = THREE.Math.degToRad( 90 - config.lat );
-                theta = THREE.Math.degToRad( config.lon );
-                camera.target.x = 500 * Math.sin( phi ) * Math.cos( theta );
-                camera.target.y = 500 * Math.cos( phi );
-                camera.target.z = 500 * Math.sin( phi ) * Math.sin( theta );
-                camera.lookAt( camera.target );
+                config.lat = Math.max(-85, Math.min(85, config.lat));
+                phi = THREE.Math.degToRad(90 - config.lat);
+                theta = THREE.Math.degToRad(config.lon);
+                camera.target.x = 500 * Math.sin(phi) * Math.cos(theta);
+                camera.target.y = 500 * Math.cos(phi);
+                camera.target.z = 500 * Math.sin(phi) * Math.sin(theta);
+                camera.lookAt(camera.target);
             } else {
                 controls.update();
                 // TODO, calculate lon, lat
             }
 
             renderer.render(scene, camera);
+
+            window.requestAnimationFrame(animate);
+            if (config.freezeInteraction) {
+            } else {
+                config.draw("peek", (mouse.x/2+0.5)*window.innerWidth+200, (-mouse.y/2+0.5)*window.innerHeight+200, 100, 200, 0, 0, 400, 400);
+                if (config.modeEditNode) {
+                    if (config.needUpdateScreenshot) {
+                        config.needUpdateScreenshot = false;
+                        config.uniforms.alpha.value = 1.0;
+                        renderer.render(scene, camera);
+                        config.draw("peek1", (mouse.x/2+0.5)*window.innerWidth+200, (-mouse.y/2+0.5)*window.innerHeight+200, 100, 200, 0, 0, 400, 400);
+                        config.uniforms.alpha.value = 0.0;
+                        renderer.render(scene, camera);
+                        config.draw("peek2", (mouse.x/2+0.5)*window.innerWidth+200, (-mouse.y/2+0.5)*window.innerHeight+200, 100, 200, 0, 0, 400, 400);
+                    }
+                }
+            }
         };
 
         camera = new THREE.PerspectiveCamera(config.fov, window.innerWidth / window.innerHeight, 1, 1000);
@@ -309,6 +407,22 @@
         }
 
         scene = new THREE.Scene();
+
+        config.addGeo = function(x, y, z) {
+            var geometry = new THREE.SphereGeometry( 10, 64, 32 );
+            var material = new THREE.MeshBasicMaterial({
+                wireframe: true,
+                side: THREE.DoubleSide,
+                color: 0xff0000
+            });
+            var mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(x,y,z);
+            objects.push(mesh);
+            scene.add(mesh);
+        };
+
+        config.addGeo(100, 0, 0);
+        config.addGeo(80, 0, 60);
 
         config.texture1 = new THREE.TextureLoader().load("texture1.jpg");
         config.texture2 = new THREE.TextureLoader().load("texture2.jpg");
@@ -356,6 +470,10 @@
             // event.preventDefault();
             switch ( event.keyCode ) {
 
+                case 69: /*e*/
+                    config.modeEditNode = !config.modeEditNode;
+                    setCursorStyle();
+                    break;
                 case 70: /*f*/
                     config.showOffset = !config.showOffset;
                     onShowOffset(config.showOffset);
@@ -376,6 +494,11 @@
                         config.offset = THREE.Math.clamp(offset, -1.0, +1.0);
                         matchesGroup2.matrix.identity();
                         matchesGroup2.applyMatrix(new THREE.Matrix4().makeRotationY(config.offset*Math.PI*2.0));
+                    } else if (config.modeEditNode) {
+                        if ((config.featurePointScale -= 0.2) < 0.2) {
+                            config.featurePointScale = 0.2;
+                        }
+                        config.onFeaturePointScale();
                     }
                     break;
                 case 39: /*right*/
@@ -384,6 +507,11 @@
                         config.offset = THREE.Math.clamp(offset, -1.0, +1.0);
                         matchesGroup2.matrix.identity();
                         matchesGroup2.applyMatrix(new THREE.Matrix4().makeRotationY(config.offset*Math.PI*2.0));
+                    } else if (config.modeEditNode) {
+                        if ((config.featurePointScale += 0.2) > 5) {
+                            config.featurePointScale = 5;
+                        }
+                        config.onFeaturePointScale();
                     }
                     break;
 
@@ -399,13 +527,14 @@
                 case 50: /*2*/ config.alpha = 0.0; break;
 
                 default:
-                    console.log("keyCode: "+event.keyCode);
+                    // console.log("keyCode: "+event.keyCode);
             }
         }, false );
 
         container = document.getElementById( 'container' );
         renderer = new THREE.WebGLRenderer({
-            antialias: true
+            antialias: true,
+            preserveDrawingBuffer: true
         });
         renderer.setPixelRatio( window.devicePixelRatio );
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -420,25 +549,51 @@
         }, false);
 
         container.addEventListener( 'mousedown', function(event) {
+            if (config.freezeInteraction) { return; }
             // event.preventDefault();
-            isUserInteracting = true;
-            onPointerDownPointerX = event.clientX;
-            onPointerDownPointerY = event.clientY;
-            onPointerDownLon = config.lon;
-            onPointerDownLat = config.lat;
+            if (config.modeEditNode) {
+                config.needUpdateScreenshot = true;
+            } else {
+                isUserInteracting = true;
+                onPointerDownPointerX = event.clientX;
+                onPointerDownPointerY = event.clientY;
+                onPointerDownLon = config.lon;
+                onPointerDownLat = config.lat;
+            }
+
         }, false );
-        container.addEventListener( 'mousemove', function(event) {
-            mouse.x = ( event.clientX - container.offsetLeft ) / container.clientWidth * 2 - 1; //  (-1, 1) | ( 1, 1)
-            mouse.y = 1 - ( event.clientY - container.offsetTop ) / container.clientHeight * 2;
-            if ( isUserInteracting === true ) {
-                config.lon = ( onPointerDownPointerX - event.clientX ) * 0.1 + onPointerDownLon;
-                config.lat = ( event.clientY - onPointerDownPointerY ) * 0.1 + onPointerDownLat;
+        document.addEventListener( 'mousemove', function(event) {
+            if (config.freezeInteraction) { return; }
+            mouse.x = (event.clientX / window.innerWidth - 0.5) * 2;
+            mouse.y = 1 - ( event.clientY / window.innerHeight * 2);
+            if (config.modeEditNode) {
+                raycaster.setFromCamera( mouse, camera );
+                // intersects = raycaster.intersectObjects( objects );
+                intersects = raycaster.intersectObjects( objects, true );
+                if (intersects.length > 0) {
+                    if (intersects[0].object !== lastIntersect) {
+                        lastIntersect = intersects[0].object;
+                        console.log(lastIntersect);
+                    }
+                    setCursorStyle("pointer");
+                } else {
+                    setCursorStyle("crosshair");
+                }
+            } else {
+                if ( isUserInteracting === true ) {
+                    setCursorStyle("all-scroll");
+                    config.lon = ( onPointerDownPointerX - event.clientX ) * 0.1 + onPointerDownLon;
+                    config.lat = ( event.clientY - onPointerDownPointerY ) * 0.1 + onPointerDownLat;
+                }
             }
         }, false );
         container.addEventListener( 'mouseup', function(event) {
+            if (config.freezeInteraction) { return; }
             isUserInteracting = false;
+            $("body").removeClass();
         }, false );
         container.addEventListener( 'wheel', function(event) {
+            if (config.freezeInteraction) { return; }
             var fov = camera.fov + event.deltaY * 0.05;
             camera.fov = THREE.Math.clamp(Math.round(fov), 10, 100);
             config.fov = camera.fov; gui.updateDisplay();
@@ -452,6 +607,24 @@
         });
 
         animate();
+
+        // var fold = gui.addFolder("Debug");
+        config.sx = config.sy = 0;
+        config.sw = config.sh = 400;
+        config.dw = config.dh = 400;
+        gui.add(config, 'naiveDual').name("简单过渡");
+        /*
+        fold.add(config, 'sx').min(0).max(window.innerWidth).step(1);
+        fold.add(config, 'sy').min(0).max(window.innerHeight).step(1);
+        fold.add(config, 'sw').min(100).max(2000).step(10).listen().onChange(function(v){
+            // config.sh = config.sw * window.devicePixelRatio;
+        });
+        fold.add(config, 'sh').min(100).max(2000).step(10).listen().onChange(function(e){
+            // config.sw = config.sh / window.devicePixelRatio;
+        });
+        fold.add(config, 'dw').min(100).max(500).step(10);
+        fold.add(config, 'dh').min(100).max(500).step(10);
+        */
 
     }, false);
 
@@ -468,7 +641,7 @@
     }
 
     function setObjectInSphere(obj, x, y) {
-        var pos = debugLonLat(x, y, 200);
+        var pos = debugLonLat(x, y, 100);
         obj.position.x = pos.x;
         obj.position.y = pos.y;
         obj.position.z = pos.z;
@@ -490,10 +663,12 @@
         var fp1 = createFeaturePoint(config.featureMaterial1);
         setObjectInSphere(fp1, match[0].x, match[0].y);
         matchesGroup1.add(fp1);
+        objects.push(fp1);
 
         var fp2 = createFeaturePoint(config.featureMaterial2);
         setObjectInSphere(fp2, match[1].x, match[1].y);
         matchesGroup2.add(fp2);
+        objects.push(fp1);
 
     }
 
@@ -533,10 +708,11 @@
         console.log("Loaded #" + config.matches.length + " matches.");
     }
 
+    /*
     $.contextMenu({
         selector: 'body',
         selectableSubMenu: true,
-        autoHide: true,
+        // autoHide: true,
         // className: 'contextmenu-custom contextmenu-custom',
         events: {
             show : function(options){
@@ -555,6 +731,7 @@
             }
         }
     });
+    */
 
 </script>
 

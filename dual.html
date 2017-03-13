@@ -208,28 +208,23 @@
 
         this.freezeInteraction = false;
         this.naiveDual = function() {
+            $(".close-button").click();
             _this.freezeInteraction = true;
             _this.alpha0 = _this.alpha;
-            // .easing(TWEEN.Easing.Quadratic.In)
-            _this.tween0 = new TWEEN.Tween(_this)
-                .to({ alpha: 1.0 }, 1000)
-                .easing(TWEEN.Easing.Elastic.InOut)
-                .onComplete(function(){ console.log("tween 0 done"); });
+            var t1 = new TWEEN.Tween(_this)
+                .to({ alpha: 0.0 }, 1000);
 
-            var tween1 = new TWEEN.Tween(_this)
-                .to({ lon: 165 }, 2000)
-                .easing(TWEEN.Easing.Elastic.InOut)
-                .onUpdate(function(){
-                    console.log("lon:"+_this.lon);
-                })
-                .onComplete(function(){ console.log("tween 1 done"); });
+            var t2 = new TWEEN.Tween(_this)
+                .delay(1000)
+                .to({ lon: 165 }, 2000);
 
-            var tween2 = new TWEEN.Tween(_this)
-                .to({ alpha: 0.0 }, 3000)
-                .easing(TWEEN.Easing.Elastic.InOut)
-                .onComplete(function(){ console.log("tween 2 done"); });
+            var t3 = new TWEEN.Tween(_this)
+                .delay(1000)
+                .to({ alpha: 1.0 }, 3000);
 
-            _this.tween0.chain(tween1).chain(tween2).start()
+            t2.chain(t3);
+            t1.chain(t2);
+            t1.start()
                 .onComplete(function(){
                     setTimeout(function(){
                         console.log("all tween done");
@@ -354,7 +349,7 @@
 
     window.addEventListener('load', function() {
         var animate = function(time) {
-            TWEEN.update(time);
+            TWEEN.update();
 
             config.uniforms.alpha.value = config.alpha;
             config.uniforms.offset.value = config.offset;

@@ -38,6 +38,14 @@
             min-width: 200px;
             background-color: rgba(0,0,0,0.4);
             overflow-y: auto;
+            z-index: 1000;
+        }
+        #cursor-log {
+            margin: 0;
+            padding: 10px;
+            border: none;
+            min-width: 0px;
+            min-height: 0px;
         }
         .pic {
             position: absolute;
@@ -55,6 +63,7 @@
 <div class="qr" id="qr"><a href="https://github.com/district10/panorama-viewer" title="扫码：在移动端打开；点击：Fork me on GitHub"><img src="qr.png" alt="" style="width:150px;height:150px" /></a></div>
 <div id="container"></div>
 <div class="log"><pre><code id="log"></code></pre></div>
+<div class="log" id="cursor-log"><pre><code id="cursor-log-code"></code></pre></div>
 <div class="pic"><a title="点击查看原图" href="texture1.jpg" target="_blank"><img id="pic" src="texture1.jpg" style="width:300px;height:150px;" alt="原图" /></a></div>
 
 <script src="jquery.min.js"></script>
@@ -202,11 +211,25 @@
             onPointerDownLon = config.lon;
             onPointerDownLat = config.lat;
         }, false );
+        // $("#cursor-log")[0].addEventListener('mousemove', function(event) { });
+        // container.addEventListener( 'mousemove', function(event) {
         container.addEventListener( 'mousemove', function(event) {
             if ( isUserInteracting === true ) {
                 config.lon = ( onPointerDownPointerX - event.clientX ) * 0.1 + onPointerDownLon;
                 config.lat = ( event.clientY - onPointerDownPointerY ) * 0.1 + onPointerDownLat;
             }
+            var $cursor = $("#cursor-log");
+            var deltaLon = camera.fov / 2;
+            var deltaLat = camera.fov * camera.aspect / 2;
+            var dx = (event.clientX/window.innerWidth)-0.5;  // right to pos
+            var dy = (event.clientY/window.innerHeight)-0.5; // down to pos
+            var lon = config.lon+dx*deltaLon;
+            var lat = config.lat-dy*deltaLat;
+            $("#cursor-log-code")[0].innerHTML = (lon >= 0?"+":"")+lon.toFixed(2) +"\n"+ (lat>=0?"+":"")+lat.toFixed(2);
+            $cursor.css({
+               "left": event.clientX - $cursor.width()/2,
+               "bottom": window.innerHeight - event.clientY + 40
+            }).show();
         }, false );
         container.addEventListener( 'mouseup', function(event) {
             isUserInteracting = false;
@@ -238,7 +261,7 @@
             document.body.style.opacity = 1;
         }, false );
 
-        gui.add(config, 'fov').min(10).max(100).step(1).name("视场角").onChange(function(value){
+        gui.add(config, 'fov').min(10).max(100).step(1).listen().name("视场角").onChange(function(value){
             if (config.fov !== camera.fov) {
                 camera.fov = value;
                 camera.updateProjectionMatrix();

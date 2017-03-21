@@ -1,7 +1,21 @@
 # panorama-viewer
 Panorama image viewer 全景图查看器
 
-由 Three.js 的几个 example 程序改写而来。
+由 Three.js 的几个 example 程序改写而来。详细见 Wiki。
 
--   [three.js/webgl_raycast_texture.html at master · mrdoob/three.js](https://github.com/mrdoob/three.js/blob/master/examples/webgl_raycast_texture.html)
--   [three.js / examples](file:///D:/tzx/git/three.js-r84/examples/index.html#misc_animation_authoring)
+---
+
+**THREE 自带的图**
+
+![](texture.jpg)
+![](https://cdn.rawgit.com/district10/panorama-viewer/master/texture.pgm.elsd.svg.marked.svg)
+
+**仪器博物馆 1**
+
+![](texture1.jpg)
+![](https://cdn.rawgit.com/district10/panorama-viewer/master/texture1.pgm.elsd.svg.marked.svg)
+
+**仪器博物馆 2**
+
+![](texture2.jpg)
+![](https://cdn.rawgit.com/district10/panorama-viewer/master/texture2.pgm.elsd.svg.marked.svg)

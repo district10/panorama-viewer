@@ -4,7 +4,7 @@
     <title>全景匹配工具</title>
     <meta charset="utf-8">
     <meta name="viewport" content="user-scalable=no, initial-scale=1">
-    <link rel="stylesheet" href="jquery.contextMenu.css" type="text/css"/>
+    <link rel="stylesheet" href="css/jquery.contextMenu.css" type="text/css"/>
     <style>
         body {
             margin: 0px;
@@ -61,14 +61,24 @@
 <div class="pic pic1"><a href="texture1.jpg" target="_blank"><img id="pic1" src="texture1.jpg" style="width:200px;height:100px;" alt="左" /></a></div>
 <div class="pic pic2"><a href="texture2.jpg" target="_blank"><img id="pic2" src="texture2.jpg" style="width:200px;height:100px;" alt="右" /></a></div>
 
-<script src="jquery.min.js"></script>
-<script src="three.min.js"></script>
-<script src="DeviceOrientationControls.js"></script>
-<script src="dat.gui.min.js"></script>
-<script src="jquery.ui.position.js"></script>
-<script src="jquery.contextMenu.js"></script>
-<script src="CubemapToEquirectangular.js"></script>
-<script src="tween.min.js"></script>
+<script src="js/jquery.min.js"></script>
+<script src="js/three.min.js"></script>
+<script src="js/CanvasRenderer.js"></script>
+<script src="js/Projector.js"></script>
+<script src="js/Detector.js"></script>
+<script src="js/DeviceOrientationControls.js"></script>
+<script src="js/dat.gui.min.js"></script>
+<script src="js/jquery.ui.position.js"></script>
+<script src="js/jquery.contextMenu.js"></script>
+<script src="js/CubemapToEquirectangular.js"></script>
+<script src="js/tween.min.js"></script>
+<script src="js/EffectComposer.js"></script>
+<script src="js/RenderPass.js"></script>
+<script src="js/MaskPass.js"></script>
+<script src="js/ShaderPass.js"></script>
+<script src="js/GlitchPass.js"></script>
+<script src="js/DigitalGlitch.js"></script>
+<script src="js/CopyShader.js"></script>
 
 <script id="vertexShader" type="x-shader/x-vertex">
     varying vec2 vUv;
@@ -116,13 +126,41 @@
         return clamp(mi,(strength+1.0)*c0-c5*strength,ma);
     }
 
+    float random(vec3 scale, float seed) {
+        /* use the fragment position for a different seed per-pixel */
+        return fract(sin(dot(gl_FragCoord.xyz + seed, scale)) * 43758.5453 + seed);
+    }
+
     void main(void)
     {
-        vec3 c;
-        vec4 Ca = sharp(tOne, vUv);
-        vec4 Cb = sharp(tSec, vec2(vUv.x+offset, vUv.y));
-        c = Ca.rgb * alpha + Cb.rgb * (1.0-alpha);
-        gl_FragColor= vec4(c, 1.0);
+
+        /*
+        vec2 center = vec2(0.0, 0.0);
+        vec2 texSize = vec2(imageWidth, imageWidth/2.0);
+        vec2 texCoord = vUv;
+
+        vec4 color = vec4(0.0);
+        float total = 0.0;
+        vec2 toCenter = center - texCoord * texSize;
+
+        float offset = random(vec3(12.9898, 78.233, 151.7182), 0.0);
+        for (float t = 0.0; t <= 40.0; t++) {
+            float percent = (t + offset) / 40.0;
+            float weight = 4.0 * (percent - percent * percent);
+            vec4 c1 = texture2D(tOne,vUv+toCenter+percent*strength/texSize);
+            vec4 c2 = texture2D(tSec,vUv+toCenter+percent*strength/texSize+vec2(offset,0));
+            vec3 c = c1.rgb * alpha + c2.rgb * (1.0-alpha);
+            vec4 sample = vec4(c, 1.0);
+            sample.rgb *= sample.a;
+            color += sample * weight;
+            total += weight;
+        }
+        gl_FragColor = color / total;
+        gl_FragColor.rgb /= (gl_FragColor.a + 0.00001);
+        */
+        vec4 c1 = texture2D(tOne,vUv);
+        vec4 c2 = texture2D(tSec,vUv+vec2(offset,0));
+        gl_FragColor = 1.0 * mix( c1, c2, 1.0 - alpha );
     }
 </script>
 
@@ -209,10 +247,11 @@
         this.freezeInteraction = false;
         this.naiveDual = function() {
             $(".close-button").click();
+            matchesGroup1.visible = matchesGroup2.visible = false;
             _this.freezeInteraction = true;
             _this.alpha0 = _this.alpha;
             var t1 = new TWEEN.Tween(_this)
-                .to({ alpha: 0.0 }, 1000);
+                .to({ alpha: 1.0 }, 1000);
 
             var t2 = new TWEEN.Tween(_this)
                 .delay(1000)
@@ -220,19 +259,54 @@
 
             var t3 = new TWEEN.Tween(_this)
                 .delay(1000)
-                .to({ alpha: 1.0 }, 3000);
+                .to({ alpha: 0.0 }, 3000)
+                .onComplete(function(){
+                    setTimeout(function(){
+                        _this.freezeInteraction = false;
+                        matchesGroup1.visible = matchesGroup2.visible = true;
+                    }, 200);
+                });
 
             t2.chain(t3);
             t1.chain(t2);
-            t1.start()
+            t1.start();
+        };
+        this.naiveDual2 = function() {
+            $(".close-button").click();
+            matchesGroup1.visible = matchesGroup2.visible = false;
+            _this.freezeInteraction = true;
+            _this.alpha0 = _this.alpha;
+            var t1 = new TWEEN.Tween(_this)
+                .to({ alpha: 0.0 }, 1000);
+            var t2 = new TWEEN.Tween(_this)
+                .delay(1000)
+                .to({ lon: 165 }, 2000)
+                .onComplete(function(){ _this.shake = true; });
+
+            var t3_1 = new TWEEN.Tween(_this)
+                .delay(1000)
+                .to({ alpha: 1.0 }, 3000);
+            var t3_2 = new TWEEN.Tween(camera)
+                .delay(1000)
+                .to({ zoom: 5.0 }, 3000)
+                .onUpdate(function(){ camera.updateProjectionMatrix(); });
+            var t4 = new TWEEN.Tween(camera)
+                .to({ zoom: 1.0 }, 1000)
+                .onUpdate(function(){ camera.updateProjectionMatrix(); })
                 .onComplete(function(){
                     setTimeout(function(){
-                        console.log("all tween done");
                         _this.freezeInteraction = false;
-                        // _this.alpha = _this.alpha0;
-                    }, 200);
+                        _this.shake = false;
+                        matchesGroup1.visible = matchesGroup2.visible = true;
+                    }, 2000);
                 });
-        }
+            t3_2.chain(t4);
+            t2.chain(t3_1, t3_2);
+            t1.chain(t2);
+            t1.start();
+        };
+
+        this.shake = false;
     };
     var config = new Config();
     if (!config.showPic) { $(".pic").hide(); }
@@ -313,6 +387,14 @@
         }
     }).name("编辑节点");
 
+    // var fold = gui.addFolder("Debug");
+    config.sx = config.sy = 0;
+    config.sw = config.sh = 400;
+    config.dw = config.dh = 400;
+    gui.add(config, 'naiveDual').name("简单过渡");
+    gui.add(config, 'naiveDual2').name("简单过渡2");
+    gui.add(config, 'shake').listen();
+
     var setCursorStyle = function(style) {
         $("body").removeClass();
         if (style) {
@@ -373,7 +455,11 @@
                 // TODO, calculate lon, lat
             }
 
-            renderer.render(scene, camera);
+            if (config.shake) {
+                config.composer.render();
+            } else {
+                renderer.render(scene, camera);
+            }
 
             window.requestAnimationFrame(animate);
             if (config.freezeInteraction) {
@@ -415,9 +501,6 @@
             objects.push(mesh);
             scene.add(mesh);
         };
-
-        config.addGeo(100, 0, 0);
-        config.addGeo(80, 0, 60);
 
         config.texture1 = new THREE.TextureLoader().load("texture1.jpg");
         config.texture2 = new THREE.TextureLoader().load("texture2.jpg");
@@ -526,21 +609,34 @@
             }
         }, false );
 
+        // config.effect = new THREE.AsciiEffect(renderer);
+
         container = document.getElementById( 'container' );
-        renderer = new THREE.WebGLRenderer({
-            antialias: true,
-            preserveDrawingBuffer: true
-        });
+        if( Detector.webgl ){
+            renderer = new THREE.WebGLRenderer({
+                antialias: true
+              , preserveDrawingBuffer: true
+            });
+        } else {
+            renderer = new THREE.CanvasRenderer();
+        }
         renderer.setPixelRatio( window.devicePixelRatio );
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.domElement.style.position = 'absolute';
         renderer.domElement.style.top = 0;
         container.appendChild(renderer.domElement);
 
+        var composer = config.composer = new THREE.EffectComposer( renderer );
+        composer.addPass( new THREE.RenderPass( scene, camera ) );
+        var glitchPass = config.glitchPass = new THREE.GlitchPass();
+        glitchPass.renderToScreen = true;
+        composer.addPass( glitchPass );
+
         window.addEventListener('resize', function() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize( window.innerWidth, window.innerHeight );
+            config.composer.setSize( window.innerWidth, window.innerHeight );
         }, false);
 
         container.addEventListener( 'mousedown', function(event) {
@@ -602,12 +698,6 @@
         });
 
         animate();
-
-        // var fold = gui.addFolder("Debug");
-        config.sx = config.sy = 0;
-        config.sw = config.sh = 400;
-        config.dw = config.dh = 400;
-        gui.add(config, 'naiveDual').name("简单过渡");
         /*
         fold.add(config, 'sx').min(0).max(window.innerWidth).step(1);
         fold.add(config, 'sy').min(0).max(window.innerHeight).step(1);
@@ -727,6 +817,9 @@
         }
     });
     */
+    /*
+
+     */
 
 </script>
 

@@ -66,10 +66,13 @@
 <div class="log" id="cursor-log"><pre><code id="cursor-log-code"></code></pre></div>
 <div class="pic"><a title="点击查看原图" href="texture1.jpg" target="_blank"><img id="pic" src="texture1.jpg" style="width:300px;height:150px;" alt="原图" /></a></div>
 
-<script src="jquery.min.js"></script>
-<script src="three.min.js"></script>
-<script src="DeviceOrientationControls.js"></script>
-<script src="dat.gui.min.js"></script>
+<script src="js/jquery.min.js"></script>
+<script src="js/three.min.js"></script>
+<script src="js/CanvasRenderer.js"></script>
+<script src="js/Projector.js"></script>
+<script src="js/Detector.js"></script>
+<script src="js/DeviceOrientationControls.js"></script>
+<script src="js/dat.gui.min.js"></script>
 
 <script>
     "use strict";
@@ -152,24 +155,25 @@
                 camera.target.x = 500 * Math.sin( phi ) * Math.cos( theta );
                 camera.target.y = 500 * Math.cos( phi );
                 camera.target.z = 500 * Math.sin( phi ) * Math.sin( theta );
-                camera.lookAt( camera.target );
+                camera.lookAt( camera.target.sub(camera.position) );
             } else {
                 controls.update();
                 // TODO, calculate lon, lat
             }
-            debug( JSON.stringify({
-                "camera": {
-                    "getWorldDirection": camera.getWorldDirection()
-                  , "localToWorld(camera.up)": camera.localToWorld(camera.up.clone())
-                }
-              , "lon": config.lon
-              , "lat": config.lat
-            }, null, 4) );
+            if (config.showLog) {
+                debug( JSON.stringify({
+                    "camera": {
+                        "getWorldDirection": camera.getWorldDirection()
+                      , "localToWorld(camera.up)": camera.localToWorld(camera.up.clone())
+                    }
+                    , "lon": config.lon
+                    , "lat": config.lat
+                }, null, 4) );
+            }
             renderer.render(scene, camera);
         };
 
         container = document.getElementById( 'container' );
-
         camera = new THREE.PerspectiveCamera(config.fov, window.innerWidth / window.innerHeight, 1, 1000);
         camera.target = new THREE.Vector3( 0, 0, 0 );
 
@@ -188,9 +192,14 @@
         var mesh = new THREE.Mesh( geometry, material );
         scene.add( mesh );
 
-        renderer = new THREE.WebGLRenderer({
-            antialias: true
-        });
+        if( Detector.webgl ){
+            renderer = new THREE.WebGLRenderer({
+                antialias: true
+            //  , preserveDrawingBuffer: true
+            });
+        } else {
+            renderer = new THREE.CanvasRenderer();
+        }
         renderer.setPixelRatio( window.devicePixelRatio );
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.domElement.style.position = 'absolute';
@@ -212,24 +221,39 @@
             onPointerDownLat = config.lat;
         }, false );
         // $("#cursor-log")[0].addEventListener('mousemove', function(event) { });
-        // container.addEventListener( 'mousemove', function(event) {
         container.addEventListener( 'mousemove', function(event) {
             if ( isUserInteracting === true ) {
                 config.lon = ( onPointerDownPointerX - event.clientX ) * 0.1 + onPointerDownLon;
                 config.lat = ( event.clientY - onPointerDownPointerY ) * 0.1 + onPointerDownLat;
             }
             var $cursor = $("#cursor-log");
-            var deltaLon = camera.fov / 2;
-            var deltaLat = camera.fov * camera.aspect / 2;
-            var dx = (event.clientX/window.innerWidth)-0.5;  // right to pos
-            var dy = (event.clientY/window.innerHeight)-0.5; // down to pos
-            var lon = config.lon+dx*deltaLon;
-            var lat = config.lat-dy*deltaLat;
-            $("#cursor-log-code")[0].innerHTML = (lon >= 0?"+":"")+lon.toFixed(2) +"\n"+ (lat>=0?"+":"")+lat.toFixed(2);
-            $cursor.css({
-               "left": event.clientX - $cursor.width()/2,
-               "bottom": window.innerHeight - event.clientY + 40
-            }).show();
+            if (config.showLog) {
+                var deltaLon = camera.fov / 2;
+                var deltaLat = camera.fov * camera.aspect / 2;
+                var dx = (event.clientX/window.innerWidth)-0.5;  // right to pos
+                var dy = (event.clientY/window.innerHeight)-0.5; // down to pos
+                var v = new THREE.Vector3();
+                v.set(dx, dy, 0.5).unproject(camera).sub(camera.position).normalize();
+                var lon = new THREE.Vector3(v.x, 0, v.z).angleTo(new THREE.Vector3(1,0,0)) /Math.PI*180;
+                var lat = v.angleTo(new THREE.Vector3().set(0,1,0)) / Math.PI*180 - 90;
+                $("#cursor-log-code")[0].innerHTML = JSON.stringify({
+                    "lon": lon,
+                    "lat": lat,
+                    "v": v
+                },null,4);
+                if (config.padding === undefined) { config.padding = 40; }
+                var left = "", right = "", top = "", bottom = "";
+                left = event.clientX - $cursor.width()/2;
+                bottom = window.innerHeight - event.clientY + config.padding;
+                $cursor.css({
+                    "left": left,
+                    "right": right,
+                    "top": top,
+                    "bottom": bottom
+                }).show();
+            } else {
+                $cursor.hide();
+            }
         }, false );
         container.addEventListener( 'mouseup', function(event) {
             isUserInteracting = false;

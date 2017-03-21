@@ -8,14 +8,14 @@ Panorama image viewer 全景图查看器
 **THREE 自带的图**
 
 ![](texture.jpg)
-![](https://cdn.rawgit.com/district10/panorama-viewer/master/texture.pgm.elsd.svg.marked.svg)
+![](https://rawgit.com/district10/panorama-viewer/gh-pages/texture.pgm.elsd.svg.marked.svg)
 
 **仪器博物馆 1**
 
 ![](texture1.jpg)
-![](https://cdn.rawgit.com/district10/panorama-viewer/master/texture1.pgm.elsd.svg.marked.svg)
+![](https://rawgit.com/district10/panorama-viewer/gh-pages/texture1.pgm.elsd.svg.marked.svg)
 
 **仪器博物馆 2**
 
 ![](texture2.jpg)
-![](https://cdn.rawgit.com/district10/panorama-viewer/master/texture2.pgm.elsd.svg.marked.svg)
+![](https://rawgit.com/district10/panorama-viewer/gh-pages/texture2.pgm.elsd.svg.marked.svg)

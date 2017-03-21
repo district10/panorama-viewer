@@ -19,3 +19,7 @@ Panorama image viewer 全景图查看器
 
 ![](texture2.jpg)
 ![](https://rawgit.com/district10/panorama-viewer/gh-pages/texture2.pgm.elsd.svg.marked.svg)
+
+**仪器博物馆 1&2 匹配**
+
+![](https://rawgit.com/district10/panorama-viewer/gh-pages/02_matches.svg)

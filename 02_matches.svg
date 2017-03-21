@@ -2,7 +2,7 @@
 <!-- SVG graphic -->
 <svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink'
 width="4096px" height="2048px" preserveAspectRatio="xMinYMin meet" viewBox="0 0 4096 2048" version="1.1">
-<image x="0" y="0" width="2048px" height="1024px" opacity="0.5" xlink:href="texture1.jpg"/>
+<image x="0" y="0" width="2048px" height="1024px" opacity="1" xlink:href="texture1.jpg"/>
 <image x="2048" y="0" width="2048px" height="1024px" opacity="1" xlink:href="texture1.jpg"/>
 <image x="0" y="1024" width="2048px" height="1024px" opacity="1" xlink:href="texture2.jpg"/>
 <polyline points="2128.73,209.445,2027.14,1831.77" stroke="green" stroke-width="2" fill="none"/>

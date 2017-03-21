@@ -1,9 +1,10 @@
 elsd := bin/elsd
 svgm := bin/svgMarker
+pano := bin/PanoMatch
 
-all: texture.pgm.elsd.svg.marked.svg texture1.pgm.elsd.svg.marked.svg texture2.pgm.elsd.svg.marked.svg
+all: texture.pgm.elsd.svg.marked.svg texture1.pgm.elsd.svg.marked.svg texture2.pgm.elsd.svg.marked.svg 03_features.txt
 clean:
-	rm -f *.marked.svg *.elsd.*
+	rm -f *.marked.svg *.elsd.* 0*
 
 %.marked.svg: %
 	${svgm} $< $@
@@ -11,3 +12,6 @@ clean:
 	${elsd} $<
 %.pgm: %.jpg
 	convert $< $@
+
+03_features.txt: texture1.jpg texture2.jpg
+	${pano} -t SIFT -a texture1.jpg -b texture2.jpg

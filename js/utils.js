@@ -1,4 +1,4 @@
-var Util = function() {
+var _Util = function() {
     var _this = this;
 
     // 哈希函数
@@ -25,10 +25,9 @@ var Util = function() {
     };
 
     // 使用：var button = util.fileInputReadAsDatUrl(); button.click(function(url){...});
-    this.fileInputReadAsDataUrl = function() {
-        var cb;
-        var $ele = $('<input type="file" />'))
-        var click = function(callback) { cb = callback; $ele.click(); };
+    this.fileInputReadAsDataUrl = function(callback) {
+        var cb = callback || function(){};
+        var $ele = $('<input type="file" />');
         $ele.on("change", function(e) {
             var f = e.target.files[0];
             if (f) {
@@ -38,17 +37,16 @@ var Util = function() {
                 };
                 r.readAsDataURL(f);
             }
-        };
-        return {
-            click: click;
-        };
+        });
+        return function() {
+            $ele.click();
+        }
     };
 
     // 使用：var button = util.fileInputReadAsText(); button.click(function(text){...});
-    this.fileInputReadAsText = function() {
-        var cb;
-        var $ele = $('<input type="file" />'))
-        var click = function(callback) { cb = callback; $ele.click(); };
+    this.fileInputReadAsText = function(callback) {
+        var cb = callback || function(){};
+        var $ele = $('<input type="file" />');
         $ele.on("change", function(e) {
             var f = e.target.files[0];
             if (f) {
@@ -58,13 +56,72 @@ var Util = function() {
                 };
                 r.readAsText(f);
             }
-        };
-        return {
-            click: click;
+        });
+        return function(){
+            $ele.click();
         };
     };
 
-    // utils
+    this.toogleVisibility = function() {
+        var toogle = function (obj, value) {
+            if (obj !== undefined && typeof(obj.visible) === 'boolean') {
+                obj.visible = value || !obj.visible;
+            }
+        }
+        return function(obj, value) {
+            if (obj === undefined) {
+                return;
+            } else if (Array.isArray(obj)) {
+                obj.forEach(function(o){
+                    toogle(o, value);
+                });
+            } else {
+                toogle(obj, value);
+            }
+        }
+    }();
+
+    this.lonlat2xyz = function(lon, lat, radius) {
+        var phi = THREE.Math.degToRad(90 - lat);
+        var theta = THREE.Math.degToRad(lon);
+        var radius = radius || 1;
+        return {
+            "x": radius * Math.sin(phi) * Math.cos(theta),
+            "y": radius * Math.cos(phi),
+            "z": radius * Math.sin(phi) * Math.sin(theta)
+        };
+    };
+
+    this.xyz2rtp = function(x, y, z) {
+        var r = Math.sqrt( x*x + y*y + z*z );
+        return {
+            radius: r,
+            theta: THREE.Math.radToDeg( Math.atan(z/x) ),
+            phi: THREE.Math.radToDeg( Math.acos(y/r) )
+        };
+    }
+
+    this.rtp2xyz = function(radius, theta, phi) {
+        var theta = THREE.Math.degToRad(theta);
+        var phi   = THREE.Math.degToRad(phi);
+        return {
+            "x": radius * Math.sin( phi ) * Math.cos( theta ),
+            "y": radius * Math.cos( phi ),
+            "z": radius * Math.sin( phi ) * Math.sin( theta )
+        };
+    }
+
+    this.xyz2lonlat = function(x, y, z) {
+        var r = Math.sqrt( x*x + y*y + z*z );
+        var theta = Math.atan( z / x );
+        var phi = Math.acos( y / r );
+        return {
+            "lon": THREE.Math.radToDeg(theta),
+            "lot": 90 - THREE.Math.radToDeg(phi)
+        };
+    }
+
     return _this;
 };
-// var util = new Util();
+
+var Util = new _Util();

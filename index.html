@@ -113,6 +113,10 @@
         this.exampleDual2 = function(){
             window.location = "dual2.html";
         };
+
+        this.camera = new THREE.PerspectiveCamera(this.fov, window.innerWidth / window.innerHeight, 1, 1000);
+        this.cameraHelper = new THREE.CameraHelper(this.camera);
+        this.cameraHelper.visible = false;
     };
     var config = new Config();
 
@@ -130,6 +134,10 @@
     function debug(msg) {
         logElement.innerHTML = msg;
     }
+
+    var raycaster = new THREE.Raycaster();
+    var mouse = new THREE.Vector2();
+    var onClickPosition = new THREE.Vector2();
 
     var container, camera, scene, renderer, controls, material;
     var isUserInteracting = false;
@@ -177,7 +185,8 @@
         };
 
         container = document.getElementById( 'container' );
-        camera = new THREE.PerspectiveCamera(config.fov, window.innerWidth / window.innerHeight, 1, 1000);
+
+        camera = config.camera;
         camera.target = new THREE.Vector3( 0, 0, 0 );
 
         controls = new THREE.DeviceOrientationControls( camera );
@@ -186,6 +195,7 @@
         }
 
         scene = new THREE.Scene();
+        scene.add(config.cameraHelper);
 
         var geometry = new THREE.SphereGeometry( 500, 64, 32 );
         geometry.scale( - 1, 1, 1 );
@@ -230,19 +240,18 @@
                 config.lat = ( event.clientY - onPointerDownPointerY ) * 0.1 + onPointerDownLat;
             }
             var $cursor = $("#cursor-log");
-            if (config.showLog) {
-                var deltaLon = camera.fov / 2;
-                var deltaLat = camera.fov * camera.aspect / 2;
-                var dx = (event.clientX/window.innerWidth)-0.5;  // right to pos
-                var dy = (event.clientY/window.innerHeight)-0.5; // down to pos
-                var v = new THREE.Vector3();
-                v.set(dx, dy, 0.5).unproject(camera).sub(camera.position).normalize();
-                var lon = new THREE.Vector3(v.x, 0, v.z).angleTo(new THREE.Vector3(1,0,0)) /Math.PI*180;
-                var lat = v.angleTo(new THREE.Vector3().set(0,1,0)) / Math.PI*180 - 90;
+            var array = [event.clientX / window.innerWidth, event.clientY / window.innerHeight];
+            onClickPosition.fromArray( array );
+            mouse.set( ( onClickPosition.x * 2 ) - 1, - ( onClickPosition.y * 2 ) + 1 );
+            raycaster.setFromCamera( mouse, camera );
+            var intersects = raycaster.intersectObjects( scene.children, true );
+            if ( intersects.length > 0 && intersects[0].uv) {
+                var uv = intersects[0].uv;
+                var lon = uv.x * 360;
+                var lat = (uv.y-0.5) * 180;
                 $("#cursor-log-code")[0].innerHTML = JSON.stringify({
                     "lon": lon,
-                    "lat": lat,
-                    "v": v
+                    "lat": lat
                 },null,4);
                 if (config.padding === undefined) { config.padding = 40; }
                 var left = "", right = "", top = "", bottom = "";
@@ -254,8 +263,6 @@
                     "top": top,
                     "bottom": bottom
                 }).show();
-            } else {
-                $cursor.hide();
             }
         }, false );
         container.addEventListener( 'mouseup', function(event) {
@@ -294,6 +301,7 @@
                 camera.updateProjectionMatrix();
             }
         });
+        gui.add(config.cameraHelper, 'visible').name("显示十字丝").listen();
         gui.add(config, 'showPic').name("显示原图").onFinishChange(function(show){
             if (show) { $(".pic").show(); } else { $(".pic").hide(); }
         });
@@ -304,7 +312,7 @@
             if (show) { $(".qr").show(); } else { $(".qr").hide(); }
         });
 
-        var tex = gui.addFolder('全景图');
+        var tex = gui.addFolder('全景图'); tex.closed = false;
         tex.add(config, 'loadTexture').name("选择全景图");
         tex.add(config, 'textureSrc', { "仪器馆1": "texture1.jpg", "仪器馆2": "texture2.jpg", "Three.js 图": "texture.jpg" } ).onChange(function(value){
             loadTexture( value );

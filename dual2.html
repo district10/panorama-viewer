@@ -35,6 +35,29 @@
             width: 200px;
             height: 300px;
         }
+        .labels > span > ul {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            display: block;
+            float: none;
+        }
+        .labels > span > ul > li {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 1px solid #CCC;
+            overflow: hidden;
+            text-indent: -2000px;
+        }
+        .labels > span > ul > li.selected,
+        .labels > span > ul > li:hover { border: 1px solid #000; }
+        .labels > span > ul > li + li { margin-left: 5px; }
+        .labels > span > ul > li.label1 { background: red; }
+        .labels > span > ul > li.label2 { background: green; }
+        .labels > span > ul > li.label3 { background: blue; }
+        .labels > span > ul > li.label4 { background: yellow; }
+
     </style>
 </head>
 <body>
@@ -45,6 +68,7 @@
 
 <script src="js/jquery.min.js"></script>
 <script src="js/three.js"></script>
+<script src="js/utils.js"></script>
 <script src="js/CanvasRenderer.js"></script>
 <script src="js/Detector.js"></script>
 <script src="js/Projector.js"></script>
@@ -63,6 +87,11 @@
         var _this = this;
         this.clock = new THREE.Clock();
 
+        // this.lonSpeed = 0.1; TODO, 带有加速度的 delta
+
+        this.material1 = new THREE.MeshBasicMaterial(); this.material1.transparent = true;
+        this.material2 = new THREE.MeshBasicMaterial(); this.material2.transparent = true;
+
         this.group2Distance = 1000;
         this.group2OffsetNorth = 90;
         this.sphereScale = 1;
@@ -70,7 +99,37 @@
 
         this.showPic = false;
 
-        this.fov = 60;
+        this.toggleCamHelperVisibility = function() {
+            var helpers;
+            return function() {
+                if (helpers === undefined && config.cam0Helper !== undefined) {
+                    helpers = [
+                        config.cam0Helper,
+                        config.cam1Helper,
+                        config.cam2Helper,
+                        config.camXHelper
+                    ];
+                }
+                Util.toogleVisibility(helpers);
+            }
+        }();
+        this.toggleAxisHelperVisibility = function() {
+            var helpers;
+            return function() {
+                if (helpers === undefined && config.globalAxis !== undefined) {
+                    helpers = [
+                        config.globalAxis,
+                        config.group1Axis,
+                        config.group2Axis
+                    ];
+                }
+                Util.toogleVisibility(helpers);
+            }
+        }();
+
+        this.raycastUV = false;
+
+        this.fov = 60; // 全局 fov：cam 0/1/2
         this.fovMin = 10;
         this.fovMax = 100;
         this.near = 10;
@@ -80,19 +139,13 @@
         this.farMin = 100;
         this.farMax = 10000;
 
-        this.loadMatches = function() { this.fileInputMatches.click(); };
-
-        this.lon = this.lat = 0;
-        this.lon1 = this.lat1 = 0;
-        this.lon2 = this.lat2 = 0;
         this.alpha = 0.5;
-
-        this.offset1 = this.offset2 = 0;
-
         this.deltaMove = 8;
 
-        this.featureBall = new THREE.SphereGeometry( 1, 64, 32);
-        this.featureMaterial = new THREE.MeshBasicMaterial( {color: 0xff0000, wireframe: true } );
+        // axis helper
+        this.globalAxis = new THREE.AxisHelper(1000);
+        this.group1Axis = new THREE.AxisHelper(1000);
+        this.group2Axis = new THREE.AxisHelper(1000);
 
         // cameras
         this.camera1 = new THREE.PerspectiveCamera(this.fov, window.innerWidth / window.innerHeight, 100, 2000);
@@ -101,15 +154,27 @@
         this.camera1.target = new THREE.Vector3( 0, 0, 0 );
         this.camera2.target = new THREE.Vector3( 0, 0, 0 );
         this.cameraX.target = new THREE.Vector3( 0, 0, 0 );
+        this.camera1.lon = this.camera2.lon = this.cameraX.lon = 0;
+        this.camera1.lat = this.camera2.lat = this.cameraX.lat = 0;
         // orbit control camera
         this.camera0 = new THREE.PerspectiveCamera(this.fov, window.innerWidth / window.innerHeight, 100, 200000);
         this.camera0.position.set(-2000, 0, 0);
-        this.cameraIndex = 1;
+        this.camera0.isCam0 = true;
+
+        this.cameraIndex = 1; // init to cam 1
 
         this.camera0.name = "CAM 0";
         this.camera1.name = "CAM 1";
         this.camera2.name = "CAM 2";
         this.cameraX.name = "CAM X";
+
+        this.cam1Helper = new THREE.CameraHelper( this.camera1 );
+        this.cam2Helper = new THREE.CameraHelper( this.camera2 );
+        this.camXHelper = new THREE.CameraHelper( this.cameraX );
+        this.cam0Helper = new THREE.CameraHelper( this.camera0 );
+
+        this.cam1Light = new THREE.DirectionalLight(0xffffff);
+        this.cam2Light = new THREE.DirectionalLight(0xffffff);
 
         this.savePanorama = function() {
             var equiManaged = new CubemapToEquirectangular( renderer, true );
@@ -138,6 +203,8 @@
     if (!config.showPic) { $(".pic").hide(); }
 
     var gui = new dat.GUI(); gui.closed = true;
+
+    gui.add(config, 'raycastUV').listen().name("Raycast UV");
 
     function updateGroup2Position() {
         var theta = THREE.Math.degToRad(config.group2OffsetNorth);
@@ -183,7 +250,15 @@
     flags.add(config, 'showPic').name("显示原图").onFinishChange(toggleShowPic);
     flags.add(config.light, 'visible').listen().name("显示灯光");
     flags.add(config.gridXZ, 'visible').listen().name("显示地平线");
-    // gui.add(config, 'loadMatches').name("加载匹配点");
+    flags.add(config, 'toggleCamHelperVisibility').listen().name("显示/隐藏相机");
+    flags.add(config.cam0Helper, 'visible').listen().name("显示 CAM 0");
+    flags.add(config.cam1Helper, 'visible').listen().name("显示 CAM 1");
+    flags.add(config.cam2Helper, 'visible').listen().name("显示 CAM 2");
+    flags.add(config.camXHelper, 'visible').listen().name("显示 CAM X");
+    flags.add(config, 'toggleAxisHelperVisibility').listen().name("显示/隐藏坐标系");
+    flags.add(config.globalAxis, 'visible').listen().name("显示全局   坐标系");
+    flags.add(config.group1Axis, 'visible').listen().name("显示全景 1 坐标系");
+    flags.add(config.group2Axis, 'visible').listen().name("显示全景 2 坐标系");
 
     function updateOffsetToNorth(group) {
         var _group = group;
@@ -203,15 +278,10 @@
         var index = index || config.cameraIndex+1;
         config.cameraIndex = index%cams.length;
         camera = cams[config.cameraIndex];
-        if (camera === config.camera1) {
-            config.lon = config.lon1;
-            config.lat = config.lat1;
-        } else if (camera === config.camera2) {
-            config.lon = config.lon2;
-            config.lat = config.lat2;
+        if (config.cam0Controls !== undefined) {
+            config.cam0Controls.enabled = camera.isCam0 || false;
         }
         console.log("active camera: "+camera.name);
-
     }
     var camFolder = gui.addFolder('相机设定');
     camFolder.add(config, 'cameraIndex', {
@@ -279,11 +349,12 @@
 
     var onAlphaChange = function (value, value2) {
         var value2 = value2 || 1-value;
-        config.material1.transparent = config.material2.transparent = true;
         config.material1.opacity = value;
         config.material2.opacity = value2;
     };
-    gui.add(config, 'alpha').name("颜色混合比例").min(0.0).max(1.0).step(0.01).listen().onChange(onAlphaChange);
+    gui.add(config, 'alpha').min(0.0).max(1.0).step(0.01).listen().onChange(onAlphaChange).name("颜色混合比例");
+    gui.add(config.material1, 'opacity').min(0.0).max(1.0).step(0.01).listen().name("全景 1 不透明度");
+    gui.add(config.material2, 'opacity').min(0.0).max(1.0).step(0.01).listen().name("全景 2 不透明度");
 
     function setCursorStyle(style) {
         $("body").removeClass();
@@ -293,20 +364,22 @@
     }
 
     var container, camera, scene, renderer, sphere, controls;
+    var raycaster = new THREE.Raycaster();
+    var mouse = new THREE.Vector2();
+    var onClickPosition = new THREE.Vector2();
 
     var isUserInteracting = false;
     var onPointerDownPointerX = 0, onPointerDownPointerY = 0, onPointerDownLon = 0, onPointerDownLat = 0;
 
-    function loadTexture1(url) {
-        $("#pic1")[0].src = $("#pic1").parent()[0].href = url;
-        config.texture1.image.src = url;
-        config.texture1.needsUpdate = true;
-    }
-    function loadTexture2(url) {
-        $("#pic2")[0].src = $("#pic2").parent()[0].href = url;
-        config.texture2.image.src = url;
-        config.texture2.needsUpdate = true;
-    }
+    var getMousePosition = function ( dom, x, y ) {
+        var rect = dom.getBoundingClientRect();
+        return [ ( x - rect.left ) / rect.width, ( y - rect.top ) / rect.height ];
+    };
+    var getIntersects = function ( point, objects ) {
+        mouse.set( ( point.x * 2 ) - 1, - ( point.y * 2 ) + 1 );
+        raycaster.setFromCamera( mouse, camera );
+        return raycaster.intersectObjects( objects, true );
+    };
 
     var isDesktop = !navigator.userAgent.match(/(iPhone|iPod|iPad|Android|BlackBerry|BB10|mobi|tablet|opera mini|nexus 7)/i);
 
@@ -318,20 +391,12 @@
         scene.add(config.gridXZ);
 
         // cameras
-        config.cam1Helper = new THREE.CameraHelper( config.camera1 );
-        config.cam2Helper = new THREE.CameraHelper( config.camera2 );
-        config.camXHelper = new THREE.CameraHelper( config.cameraX );
-        config.cam0Helper = new THREE.CameraHelper( config.camera0 );
         scene.add(config.camera1).add(config.cam1Helper );
         scene.add(config.camera2).add(config.cam2Helper );
         scene.add(config.cameraX).add(config.camXHelper );
         scene.add(config.camera0).add(config.cam0Helper );
-        config.camera1.camHelper = config.cam1Helper;
-        config.camera2.camHelper = config.cam2Helper;
-        config.cameraX.camHelper = config.camXHelper;
-        config.camera0.camHelper = config.cam0Helper;
-        // set current camera to camera1
-        camera = config.camera1;
+        scene.add(config.cam1Light);
+        scene.add(config.cam2Light);
 
         // renderer
         container = document.getElementById( 'container' );
@@ -350,128 +415,159 @@
         container.appendChild(renderer.domElement);
 
         // controls
+        config.cam0Controls = new THREE.OrbitControls( config.camera0, renderer.domElement );
+        switchToCam(config.cameraIndex);
         controls = new THREE.DeviceOrientationControls( camera );
         if (isDesktop) { controls.enabled = false; }
-        config.cam0Controls = new THREE.OrbitControls( config.camera0, renderer.domElement );
 
         // meshes
 
         config.texture1 = new THREE.TextureLoader().load("texture1.jpg");
         config.texture2 = new THREE.TextureLoader().load("texture2.jpg");
-        config.texture1.wrapS = config.texture2.wrapS = THREE.RepeatWrapping;
-        config.texture1.wrapT = config.texture2.wrapT = THREE.RepeatWrapping;
+        // config.texture1.wrapS = config.texture2.wrapS = THREE.RepeatWrapping;
+        // config.texture1.wrapT = config.texture2.wrapT = THREE.RepeatWrapping;
 
-        config.material1 = new THREE.MeshBasicMaterial({ map: config.texture1 });
-        config.material2 = new THREE.MeshBasicMaterial({ map: config.texture2 });
+        config.material1.map = config.texture1; config.material1.side = THREE.DoubleSide;
+        config.material2.map = config.texture2; config.material2.side = THREE.DoubleSide;
 
-        sphere = new THREE.SphereGeometry( 500, 64, 32 ); sphere.scale( -1, 1, 1 );
+        sphere = new THREE.SphereGeometry( 500, 64, 32 ); // sphere.scale( -1, 1, 1 );
+        /*
+        for ( var i = 0; i < sphere.faceVertexUvs[ 0 ].length; i ++ ) {
+            var uvs = sphere.faceVertexUvs[ 0 ][ i ];
+            for ( var j = 0; j < 3; j ++ ) {
+                console.log(JSON.stringify({
+                    "x": uvs[ j ].x,
+                    "y": uvs[ j ].y
+                }, null, 4));
+            }
+        }
+        */
+
         config.mesh1 = new THREE.Mesh( sphere, config.material1 );
         config.mesh2 = new THREE.Mesh( sphere, config.material2 );
 
-        scene.add(new THREE.AxisHelper(1000));
+        scene.add(config.globalAxis);
 
-        config.rotationCenter = new THREE.AxisHelper(1000);
-        scene.add(config.rotationCenter);
+        config.cam0Axis = new THREE.AxisHelper(1000);
+        scene.add(config.cam0Axis);
 
         config.group1 = new THREE.Group();
-        config.group1.add(new THREE.AxisHelper(1000)).add(config.mesh1);
+        config.group1.add(config.group1Axis).add(config.mesh1);
         scene.add(config.group1);
 
         config.group2 = new THREE.Group();
         updateGroup2Position();
-        config.group2.add(new THREE.AxisHelper(1000)).add(config.mesh2);
+        config.group2.add(config.group2Axis).add(config.mesh2);
         scene.add(config.group2);
+
+        (function() {
+            var sphere = new THREE.SphereGeometry( 100, 64, 32 );
+            sphere.scale(-1,1,1);
+            // var material = new THREE.MeshBasicMaterial({map: cubeTexture});
+            var material = new THREE.MeshBasicMaterial({
+                map: new THREE.TextureLoader().load("texture.jpg")
+            });
+            var sphereMesh = new THREE.Mesh( sphere, material);
+            sphereMesh.position.set(200,0,0);
+            scene.add(sphereMesh);
+        })();
+
+        // init
+        onAlphaChange(config.alpha);
+        config.toggleCamHelperVisibility();
+        config.toggleAxisHelperVisibility();
+
+        animate();
 
         window.addEventListener('keydown', onKeyDown, false );
         window.addEventListener('resize', function() {
             var aspect = window.innerWidth / window.innerHeight;
-            config.camera1.aspect = aspect; config.camera1.updateProjectionMatrix();
-            config.camera2.aspect = aspect; config.camera2.updateProjectionMatrix();
-            config.cameraX.aspect = aspect; config.cameraX.updateProjectionMatrix();
-            config.camera0.aspect = aspect; config.camera0.updateProjectionMatrix();
+            [ config.camera1, config.camera2, config.cameraX, config.camera0 ].forEach(function(cam){
+                cam.aspect = aspect;
+                cam.updateProjectionMatrix();
+            });
             renderer.setSize( window.innerWidth, window.innerHeight );
         }, false);
         container.addEventListener( 'mousedown', function(event) {
             if (config.freezeInteraction) { return; }
-            if (camera === config.camera0) {
+            //
+            if (camera.isCam0) {
                 config.gridXZ.visible0 = config.gridXZ.visible;
                 config.gridXZ.visible = true;
                 return;
+            } else if (camera.lon !== undefined && camera.lat !== undefined) {
+                setCursorStyle("all-scroll");
+                isUserInteracting = true;
+                onPointerDownPointerX = event.clientX;
+                onPointerDownPointerY = event.clientY;
+                onPointerDownLon = camera.lon;
+                onPointerDownLat = camera.lat;
             }
-            isUserInteracting = true;
-            onPointerDownPointerX = event.clientX;
-            onPointerDownPointerY = event.clientY;
-            onPointerDownLon = config.lon;
-            onPointerDownLat = config.lat;
         }, false );
         document.addEventListener( 'mousemove', function(event) {
             if (config.freezeInteraction) { return; }
-            if (camera === config.camera0) { return; }
-            if ( isUserInteracting === true ) {
-                setCursorStyle("all-scroll");
-                config.lon = ( onPointerDownPointerX - event.clientX ) * 0.1 + onPointerDownLon;
-                config.lat = ( event.clientY - onPointerDownPointerY ) * 0.1 + onPointerDownLat;
+            // if (camera.isCam0) { return; }
+            if (config.raycastUV) {
+                var array = [event.clientX / window.innerWidth, event.clientY / window.innerHeight];
+                onClickPosition.fromArray( array );
+                var intersects = getIntersects( onClickPosition, scene.children );
+
+                if ( intersects.length > 0 && intersects[0].uv) {
+                    var uv = intersects[0].uv;
+                    console.log(uv.x + ", " + uv.y);
+                    // intersects[ 0 ].object.material.map.transformUv( uv );
+                    // canvas.setCrossPosition( uv.x, uv.y );
+                } else {
+                    console.log("nothing");
+                }
+                return;
+            }
+
+            if (camera.lon !== undefined && camera.lat !== undefined) {
+                if ( isUserInteracting === true ) {
+                    camera.lon = ( onPointerDownPointerX - event.clientX ) * 0.1 + onPointerDownLon;
+                    camera.lat = ( event.clientY - onPointerDownPointerY ) * 0.1 + onPointerDownLat;
+                }
             }
         }, false );
         container.addEventListener( 'mouseup', function(event) {
             if (config.freezeInteraction) { return; }
-            if (camera === config.camera0) {
+            if (camera.isCam0) {
                 config.gridXZ.visible = config.gridXZ.visible0;
-                return;
+            } else if (camera.lon !== undefined && camera.lat !== undefined) {
+                isUserInteracting = false;
+                setCursorStyle();
             }
-            isUserInteracting = false;
-            setCursorStyle();
         }, false );
         container.addEventListener( 'wheel', function(event) {
             if (config.freezeInteraction) { return; }
-            if (camera === config.camera0) {
-                console.log("!!");
-                return;
-            }
             var fov = camera.fov + event.deltaY * 0.05;
             camera.fov = THREE.Math.clamp(Math.round(fov), config.fovMin, config.fovMax);
-            // camera.updateProjectionMatrix();
         }, false );
-
-        onAlphaChange(config.alpha);
-        // config.material1.wireframe = true; config.material2.wireframe = true;
-
-        animate();
     }, false);
 
     var animate = function(time) {
         window.requestAnimationFrame(animate);
         TWEEN.update();
 
-        // helper
-        cams.forEach(function(cam){
-            cam.camHelper.visible = cam !== camera;
-        });
-        config.rotationCenter.visible = camera === config.camera0;
-        config.rotationCenter.position.copy(config.cam0Controls.target);
+        config.cam0Axis.visible = camera.isCam0 || false;
+        config.cam0Axis.position.copy(config.cam0Controls.target);
 
-        if (camera === config.camera0) {
+        if (camera.isCam0) {
             config.cam0Controls.update(config.clock.getDelta());
         } else if (!isDesktop) {
-            // TODO, calculate lon, lat
             controls.update();
-        } else {
-            if (config.lon > 360) { config.lon -= 360; }
-            if (config.lon <   0) { config.lon += 360; }
-            config.lat = Math.max(-85, Math.min(85, config.lat));
-            var phi = THREE.Math.degToRad(90 - config.lat);
-            var theta = THREE.Math.degToRad(config.lon);
-            camera.target.x = 500 * Math.sin(phi) * Math.cos(theta);
-            camera.target.y = 500 * Math.cos(phi);
-            camera.target.z = 500 * Math.sin(phi) * Math.sin(theta);
+            // TODO, calculate lon, lat
+        } else if (camera.lon !== undefined && camera.lat !== undefined) {
+            while (camera.lon > 360) { camera.lon -= 360; }
+            while (camera.lon <   0) { camera.lon += 360; }
+            camera.lat = Math.max(-85, Math.min(85, camera.lat));
+
+            var v = Util.lonlat2xyz(camera.lon, camera.lat, 500);
+            camera.target.x = v.x;
+            camera.target.y = v.y;
+            camera.target.z = v.z;
             camera.lookAt( camera.target.add(camera.position) );
-            if (camera === config.camera1) {
-                config.lon1 = config.lon;
-                config.lat1 = config.lat;
-            } else if (camera == config.camera2) {
-                config.lon2 = config.lon;
-                config.lat2 = config.lat;
-            }
         }
 
         config.camera1.position.copy(config.group1.position);
@@ -493,19 +589,6 @@
         if (16 <= code && code <= 18) { // shift, control, alt
             return;
         }
-        /*
-        if (event.ctrlKey) {
-            switch (code) {
-                // up, down, left, righ
-                case 38: config.cam0Controls.target.x -= 0.1; break;
-                case 40: config.cam0Controls.target.x += 0.1; break;
-                case 37: config.cam0Controls.target.z -= 0.1; break;
-                case 39: config.cam0Controls.target.z += 0.1; break;
-                default:
-                    ;
-            }
-        }
-        */
         switch (code) {
 
             case 48: ; break; // 0
@@ -532,8 +615,6 @@
                         config.alpha = 1.0;
                     }
                     onAlphaChange(config.alpha);
-                } else {
-                    config.cam0Controls.target.x += 0.1;
                 }
                 break;
             case 40: // down
@@ -543,24 +624,26 @@
                         config.alpha = 0.0;
                     }
                     onAlphaChange(config.alpha);
-                } else {
-                    // onAlphaChange(1.0, 1.0);
-                    config.cam0Controls.target.x -= 0.1;
                 }
                 break;
             case 37: // left
-                if (camera !== config.camera0) {
-                } else {
-                    config.cam0Controls.target.z += 0.1;
+                if (camera.lon !== undefined) {
+                    camera.lon -= 0.25;
                 }
                 break;
             case 39: // right
-                if (camera !== config.camera0) {
-                } else {
-                    config.cam0Controls.target.z += 0.1;
+                if (camera.lon !== undefined) {
+                    camera.lon += 0.25;
                 }
                 break;
 
+            case 32: // space
+                if (camera.isCam0) {
+                    config.cam0Controls.target.setScalar(0);
+                } else {
+                    config.raycastUV = !config.raycastUV;
+                }
+                break;
             case 13: // enter
                 switchToCam();
                 break;
@@ -568,6 +651,130 @@
                 console.log("keyCode: "+event.keyCode);
         }
     }
+
+    // gui.remember(config);
+
+    $.contextMenu.types.label = function(item, opt, root) {
+        $('<span>Label<ul>'
+            + '<li class="label1" title="label 1">label 1</li>'
+            + '<li class="label2" title="label 2">label 2</li>'
+            + '<li class="label3" title="label 3">label 3</li>'
+            + '<li class="label4" title="label 4">label 4</li></ul></span>')
+            .appendTo(this)
+            .on('click', 'li', function() {
+                // do some funky stuff
+                console.log('Clicked on ' + $(this).text());
+                // hide the menu
+                // root.$menu.trigger('contextmenu:hide');
+            });
+        this.addClass('labels').on('contextmenu:focus', function(e) {
+            // setup some awesome stuff
+        }).on('contextmenu:blur', function(e) {
+            // tear down whatever you did
+        }).on('keydown', function(e) {
+            // some funky key handling, maybe?
+        });
+    };
+
+    $.contextMenu({
+        selector: 'body',
+        build: function($triggerElement, event) {
+            return {
+                selectableSubMenu: true,
+                callback: function (key, opt) {
+                    console.log("Clicked on " + key + " on element " + opt.$trigger.attr("id"));
+                    console.log("Clicked on " + $triggerElement + " on element " + event);
+                },
+                // animation: "{duration: 250, show: 'fadeIn', hide: 'fadeOut'}",
+                // autoHide: true, // buggy on chrome
+                // className: 'contextmenu-custom contextmenu-custom',
+                events: {
+                    show: function (options) {
+                        // ...
+                    },
+                    hide: function (options) {
+                        // ...
+                    }
+                },
+                items: {
+                    copy: {
+                        name: "Copy close",
+                        icon: "edit",
+                        // accesskey: "cool word" // c
+                        // accesskey: "cool word" // w
+                        callback: function (key, opt) {
+                            console.log("copy close");
+                            return true; // close
+                        }
+                    },
+                    copy2: {
+                        name: "Copy open",
+                        icon: "edit",
+                        callback: function (key, opt) {
+                            console.log("copy not close");
+                            return false;
+                        }
+                    },
+                    copy3: {
+                        name: "Copy default callback",
+                        icon: "edit"
+                    },
+                    sep1: "---------",
+                    saveAsImage: {
+                        name: "Save",
+                        icon: "cut",
+                        callback: function (key, opt) {
+                            var $a = $("<a></a>");
+                            $a[0].download = 'image.png';
+                            $a[0].href = renderer.domElement.toDataURL();
+                            $a.click();
+                        }
+                    },
+                    label: {
+                        type: 'label',
+                        customName: 'label',
+                        callback: function (key, opt) {
+                            return false; // open
+                        }
+                    },
+                    sep2: "---------",
+                    cut: {
+                        name: "如果是 cam0 则 disabled",
+                        icon: "cut",
+                        disabled: function () {
+                            return camera.isCam0 || false;
+                        }
+                    },
+                    fold1: {
+                        "name": "Sub group",
+                        "items": {
+                            "fold1-key1": {"name": "Foo bar"},
+                            "fold2": {
+                                "name": "Sub group 2",
+                                "items": {
+                                    "fold2-key1": {"name": "alpha"},
+                                    "fold2-key2": {"name": "bravo"},
+                                    "fold2-key3": {"name": "charlie"}
+                                }
+                            },
+                            "fold1-key3": {"name": "delta"}
+                        }
+                    }
+                }
+            };
+        }
+    });
+
+    var toggleContext = function() {
+        var show = true;
+        return function(_show){
+            if (_show === undefined) {
+                show = !show;
+                _show = show;
+            }
+            $("body").contextMenu(_show);
+        };
+    }();
 
 </script>
 

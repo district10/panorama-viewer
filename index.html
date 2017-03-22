@@ -109,7 +109,10 @@
         // examples
         this.exampleDual = function(){
             window.location = "dual.html";
-        }
+        };
+        this.exampleDual2 = function(){
+            window.location = "dual2.html";
+        };
     };
     var config = new Config();
 
@@ -155,7 +158,7 @@
                 camera.target.x = 500 * Math.sin( phi ) * Math.cos( theta );
                 camera.target.y = 500 * Math.cos( phi );
                 camera.target.z = 500 * Math.sin( phi ) * Math.sin( theta );
-                camera.lookAt( camera.target.sub(camera.position) );
+                camera.lookAt( camera.target.add(camera.position) );
             } else {
                 controls.update();
                 // TODO, calculate lon, lat
@@ -317,6 +320,7 @@
         }
         var ref = gui.addFolder('更多示例');
         ref.add(config, 'exampleDual').name("全景图配准");
+        ref.add(config, 'exampleDual2').name("全景图配准2");
 
         animate();
 

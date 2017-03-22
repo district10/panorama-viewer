@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <title>全景过渡</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="user-scalable=no, initial-scale=1">
+    <link rel="stylesheet" href="css/jquery.contextMenu.css" type="text/css"/>
+    <style>
+        body {
+            margin: 0px;
+            overflow: hidden;
+            z-index: -1000;
+        }
+        /* cursors: [JavaScript - Mouse Cursor Styles](http://www.javascripter.net/faq/stylesc.htm) */
+        body.move, body.move *                   { cursor: move !important; }
+        body.crosshair, body.crosshair *        { cursor: crosshair !important; }
+        body.pointer, body.pointer *             { cursor: pointer !important; }
+        body.all-scroll, body.all-scroll *      { cursor: all-scroll !important; }
+
+        .pic {
+            position: absolute;
+            bottom: 0px;
+            margin: 2px;
+            padding: 2px;
+            border: 1px solid white;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .pic1 { left:  0px; }
+        .pic2 { right: 0px; }
+
+        #context-menu {
+            // visibility: hidden;
+            background-color: white;
+            border: 1px solid grey;
+            width: 200px;
+            height: 300px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="container"></div>
+<div class="pic pic1"><a href="texture1.jpg" target="_blank"><img id="pic1" src="texture1.jpg" style="width:200px;height:100px;" alt="左" /></a></div>
+<div class="pic pic2"><a href="texture2.jpg" target="_blank"><img id="pic2" src="texture2.jpg" style="width:200px;height:100px;" alt="右" /></a></div>
+
+<script src="js/jquery.min.js"></script>
+<script src="js/three.js"></script>
+<script src="js/CanvasRenderer.js"></script>
+<script src="js/Detector.js"></script>
+<script src="js/Projector.js"></script>
+<script src="js/OrbitControls.js"></script>
+<script src="js/DeviceOrientationControls.js"></script>
+<script src="js/dat.gui.min.js"></script>
+<script src="js/jquery.ui.position.js"></script>
+<script src="js/jquery.contextMenu.js"></script>
+<script src="js/CubemapToEquirectangular.js"></script>
+<script src="js/tween.min.js"></script>
+
+<script>
+    "use strict";
+
+    var Config = function() {
+        var _this = this;
+        this.clock = new THREE.Clock();
+
+        this.group2Distance = 1000;
+        this.group2OffsetNorth = 90;
+        this.sphereScale = 1;
+        this.sphereScale0 = this.sphereScale;
+
+        this.showPic = false;
+
+        this.fov = 60;
+        this.fovMin = 10;
+        this.fovMax = 100;
+        this.near = 10;
+        this.nearMin = 0;
+        this.nearMax = 1000;
+        this.far = 10000;
+        this.farMin = 100;
+        this.farMax = 10000;
+
+        this.loadMatches = function() { this.fileInputMatches.click(); };
+
+        this.lon = this.lat = 0;
+        this.lon1 = this.lat1 = 0;
+        this.lon2 = this.lat2 = 0;
+        this.alpha = 0.5;
+
+        this.offset1 = this.offset2 = 0;
+
+        this.deltaMove = 8;
+
+        this.featureBall = new THREE.SphereGeometry( 1, 64, 32);
+        this.featureMaterial = new THREE.MeshBasicMaterial( {color: 0xff0000, wireframe: true } );
+
+        // cameras
+        this.camera1 = new THREE.PerspectiveCamera(this.fov, window.innerWidth / window.innerHeight, 100, 2000);
+        this.camera2 = new THREE.PerspectiveCamera(this.fov, window.innerWidth / window.innerHeight, 100, 2000);
+        this.cameraX = new THREE.PerspectiveCamera(this.fov, window.innerWidth / window.innerHeight, 100, 2000);
+        this.camera1.target = new THREE.Vector3( 0, 0, 0 );
+        this.camera2.target = new THREE.Vector3( 0, 0, 0 );
+        this.cameraX.target = new THREE.Vector3( 0, 0, 0 );
+        // orbit control camera
+        this.camera0 = new THREE.PerspectiveCamera(this.fov, window.innerWidth / window.innerHeight, 100, 200000);
+        this.camera0.position.set(-2000, 0, 0);
+        this.cameraIndex = 1;
+
+        this.camera0.name = "CAM 0";
+        this.camera1.name = "CAM 1";
+        this.camera2.name = "CAM 2";
+        this.cameraX.name = "CAM X";
+
+        this.savePanorama = function() {
+            var equiManaged = new CubemapToEquirectangular( renderer, true );
+            equiManaged.setSize( 2048, 1024 );
+            equiManaged.update( camera, scene );
+        };
+        this.needUpdateScreenshot = false;
+
+        this.showOffsetToNorth = false;
+        this.offsetToNorth1 = 0;
+        this.offsetToNorth2 = 0;
+
+        this.freezeInteraction = false;
+        this.dual = function() {
+            $(".close-button").click();
+            // matchesGroup1.visible = matchesGroup2.visible = false;
+            // _this.freezeInteraction = true;
+            _this.alpha0 = _this.alpha;
+        };
+
+        this.light = new THREE.AmbientLight(0xffffff);
+        this.gridXZ = new THREE.GridHelper(10000, 100, 0x00ff00, 0x00ff00);
+        this.gridXZ.visible = false;
+    };
+    var config = new Config();
+    if (!config.showPic) { $(".pic").hide(); }
+
+    var gui = new dat.GUI(); gui.closed = true;
+
+    function updateGroup2Position() {
+        var theta = THREE.Math.degToRad(config.group2OffsetNorth);
+        var radius = config.group2Distance;
+        var x = Math.sin(theta) * radius;
+        var z = -Math.cos(theta) * radius;
+        config.group2.position.set(x,0,z);
+    }
+
+    var geometryFolder = gui.addFolder('全景位置'); geometryFolder.closed = false;
+    geometryFolder.add(config, 'group2Distance').min(0).max(10000).step(1).onChange(updateGroup2Position).name("距离")
+    geometryFolder.add(config, 'group2OffsetNorth').min(0).max(360).step(1).onChange(updateGroup2Position).name("角度");
+    geometryFolder.add(config, 'sphereScale').min(0.5).max(10).step(0.1).onChange(function(value){
+        var scale = value / config.sphereScale0;
+        sphere.scale(scale,scale,scale);
+        config.sphereScale0 = value;
+    }).name("大小");
+    var offsetFolder = geometryFolder.addFolder('偏移量');
+    var onShowOffset = function (show) {
+        if (show) {
+            config.offsetController1 = offsetFolder.add(config, 'offsetToNorth1').name("图 1 偏移量").min(0).max(360).step(0.1).listen().onChange(updateOffsetToNorth(config.group1));
+            config.offsetController2 = offsetFolder.add(config, 'offsetToNorth2').name("图 2 偏移量").min(0).max(360).step(0.1).listen().onChange(updateOffsetToNorth(config.group2));
+        } else {
+            if (config.offsetController1) { offsetFolder.remove(config.offsetController1); }
+            if (config.offsetController2) { offsetFolder.remove(config.offsetController2); }
+        }
+    };
+    offsetFolder.add(config, 'showOffsetToNorth').onChange(onShowOffset).name("修改偏移量");
+
+    function toggleShowPic(show) {
+        if (show) {
+            $(".pic").show();
+        } else {
+            $(".pic").hide();
+        }
+    }
+
+    // gui.add(config, 'fov').min(10).max(100).step(1).listen().name("视场角").onChange(updateCameraFov);
+    gui.add(config, 'savePanorama').name("把场景存成全景图");
+    gui.add(config, 'deltaMove').min(1).max(10).step(1).listen().name("移动速度");
+
+    var flags = gui.addFolder("变量的设定");
+    flags.add(config, 'showPic').name("显示原图").onFinishChange(toggleShowPic);
+    flags.add(config.light, 'visible').listen().name("显示灯光");
+    flags.add(config.gridXZ, 'visible').listen().name("显示地平线");
+    // gui.add(config, 'loadMatches').name("加载匹配点");
+
+    function updateOffsetToNorth(group) {
+        var _group = group;
+        return function (offset) {
+            var p = _group.position.clone();
+            _group.matrix.identity();
+            _group.applyMatrix(
+                new THREE.Matrix4().makeTranslation(p.x,p.y,p.z).multiply(
+                    new THREE.Matrix4().makeRotationY(THREE.Math.degToRad(offset))
+                )
+            );
+        }
+    }
+
+    var cams = [config.camera0, config.camera1, config.camera2, config.cameraX];
+    function switchToCam(index) {
+        var index = index || config.cameraIndex+1;
+        config.cameraIndex = index%cams.length;
+        camera = cams[config.cameraIndex];
+        if (camera === config.camera1) {
+            config.lon = config.lon1;
+            config.lat = config.lat1;
+        } else if (camera === config.camera2) {
+            config.lon = config.lon2;
+            config.lat = config.lat2;
+        }
+        console.log("active camera: "+camera.name);
+
+    }
+    var camFolder = gui.addFolder('相机设定');
+    camFolder.add(config, 'cameraIndex', {
+        "CAM 1": 1,
+        "CAM 2": 2,
+        "CAM X": 3,
+        "CAM 0": 0
+    } ).listen().onChange(switchToCam).name("当前相机");
+    camFolder.add(config, 'fov').min(config.fovMin).max(config.fovMax).step(1).listen().onChange(function(fov){
+        // config.camera0.fov =
+        config.camera1.fov = config.camera2.fov = config.cameraX.fov = fov;
+    }).name("全局 fov");
+    camFolder.add(config, 'near').min(config.nearMin).max(config.nearMax).step(1).listen().onChange(function(near){
+        if (config.near > config.far) {
+            config.near = config.far;
+        }
+        config.camera1.near = config.camera2.near = config.cameraX.near = config.near;
+    }).name("全局 near");
+    camFolder.add(config, 'far').min(config.farMin).max(config.farMax).step(1).listen().onChange(function(near){
+        if (config.far < config.near) {
+            config.far = config.near;
+        }
+        config.camera1.far = config.camera2.far = config.cameraX.far = config.far;
+    }).name("全局 far");
+
+    var cam1Folder = camFolder.addFolder('CAM 1'); cam1Folder.closed = false;
+    var cam2Folder = camFolder.addFolder('CAM 2'); cam2Folder.closed = false;
+    var camXFolder = camFolder.addFolder('CAM X'); camXFolder.closed = false;
+
+    cam1Folder.add(config.camera1, "fov").min(config.fovMin).max(config.fovMax).step(1).listen().onChange(function(){ });
+    cam2Folder.add(config.camera2, "fov").min(config.fovMin).max(config.fovMax).step(1).listen().onChange(function(){ });
+    camXFolder.add(config.cameraX, "fov").min(config.fovMin).max(config.fovMax).step(1).listen().onChange(function(){ });
+
+    cam1Folder.add(config.camera1, "near").min(config.nearMin).max(config.nearMax).step(1).listen().onChange(function(){
+        if (config.camera1.near > config.camera1.far) {
+            config.camera1.near = config.camera1.far;
+        }
+    });
+    cam2Folder.add(config.camera2, "near").min(config.nearMin).max(config.nearMax).step(1).listen().onChange(function(){
+        if (config.camera2.near > config.camera2.far) {
+            config.camera2.near = config.camera2.far;
+        }
+    });
+    camXFolder.add(config.cameraX, "near").min(config.nearMin).max(config.nearMax).step(1).listen().onChange(function(){
+        if (config.cameraX.near > config.cameraX.far) {
+            config.cameraX.near = config.cameraX.far;
+        }
+    });
+
+    cam1Folder.add(config.camera1, "far").min(config.farMin).max(config.farMax).step(1).listen().onChange(function(){
+        if (config.camera1.far < config.camera1.near) {
+            config.camera1.far = config.camera1.near;
+        }
+    });
+    cam2Folder.add(config.camera2, "far").min(config.farMin).max(config.farMax).step(1).listen().onChange(function(){
+        if (config.camera2.far < config.camera2.near) {
+            config.camera2.far = config.camera2.near;
+        }
+    });
+    camXFolder.add(config.cameraX, "far").min(config.farMin).max(config.farMax).step(1).listen().onChange(function(){
+        if (config.cameraX.far < config.cameraX.near) {
+            config.cameraX.far = config.cameraX.near;
+        }
+    });
+
+    var onAlphaChange = function (value, value2) {
+        var value2 = value2 || 1-value;
+        config.material1.transparent = config.material2.transparent = true;
+        config.material1.opacity = value;
+        config.material2.opacity = value2;
+    };
+    gui.add(config, 'alpha').name("颜色混合比例").min(0.0).max(1.0).step(0.01).listen().onChange(onAlphaChange);
+
+    function setCursorStyle(style) {
+        $("body").removeClass();
+        if (style) {
+            $("body").addClass(style);
+        }
+    }
+
+    var container, camera, scene, renderer, sphere, controls;
+
+    var isUserInteracting = false;
+    var onPointerDownPointerX = 0, onPointerDownPointerY = 0, onPointerDownLon = 0, onPointerDownLat = 0;
+
+    function loadTexture1(url) {
+        $("#pic1")[0].src = $("#pic1").parent()[0].href = url;
+        config.texture1.image.src = url;
+        config.texture1.needsUpdate = true;
+    }
+    function loadTexture2(url) {
+        $("#pic2")[0].src = $("#pic2").parent()[0].href = url;
+        config.texture2.image.src = url;
+        config.texture2.needsUpdate = true;
+    }
+
+    var isDesktop = !navigator.userAgent.match(/(iPhone|iPod|iPad|Android|BlackBerry|BB10|mobi|tablet|opera mini|nexus 7)/i);
+
+    window.addEventListener('load', function() {
+
+        // scene
+        scene = new THREE.Scene();
+        scene.add(config.light);
+        scene.add(config.gridXZ);
+
+        // cameras
+        config.cam1Helper = new THREE.CameraHelper( config.camera1 );
+        config.cam2Helper = new THREE.CameraHelper( config.camera2 );
+        config.camXHelper = new THREE.CameraHelper( config.cameraX );
+        config.cam0Helper = new THREE.CameraHelper( config.camera0 );
+        scene.add(config.camera1).add(config.cam1Helper );
+        scene.add(config.camera2).add(config.cam2Helper );
+        scene.add(config.cameraX).add(config.camXHelper );
+        scene.add(config.camera0).add(config.cam0Helper );
+        config.camera1.camHelper = config.cam1Helper;
+        config.camera2.camHelper = config.cam2Helper;
+        config.cameraX.camHelper = config.camXHelper;
+        config.camera0.camHelper = config.cam0Helper;
+        // set current camera to camera1
+        camera = config.camera1;
+
+        // renderer
+        container = document.getElementById( 'container' );
+        if(Detector.webgl){
+            renderer = new THREE.WebGLRenderer({
+                antialias: true,
+                preserveDrawingBuffer: true
+            });
+        } else {
+            renderer = new THREE.CanvasRenderer();
+        }
+        renderer.setPixelRatio( window.devicePixelRatio );
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.domElement.style.position = 'absolute';
+        renderer.domElement.style.top = 0;
+        container.appendChild(renderer.domElement);
+
+        // controls
+        controls = new THREE.DeviceOrientationControls( camera );
+        if (isDesktop) { controls.enabled = false; }
+        config.cam0Controls = new THREE.OrbitControls( config.camera0, renderer.domElement );
+
+        // meshes
+
+        config.texture1 = new THREE.TextureLoader().load("texture1.jpg");
+        config.texture2 = new THREE.TextureLoader().load("texture2.jpg");
+        config.texture1.wrapS = config.texture2.wrapS = THREE.RepeatWrapping;
+        config.texture1.wrapT = config.texture2.wrapT = THREE.RepeatWrapping;
+
+        config.material1 = new THREE.MeshBasicMaterial({ map: config.texture1 });
+        config.material2 = new THREE.MeshBasicMaterial({ map: config.texture2 });
+
+        sphere = new THREE.SphereGeometry( 500, 64, 32 ); sphere.scale( -1, 1, 1 );
+        config.mesh1 = new THREE.Mesh( sphere, config.material1 );
+        config.mesh2 = new THREE.Mesh( sphere, config.material2 );
+
+        scene.add(new THREE.AxisHelper(1000));
+
+        config.rotationCenter = new THREE.AxisHelper(1000);
+        scene.add(config.rotationCenter);
+
+        config.group1 = new THREE.Group();
+        config.group1.add(new THREE.AxisHelper(1000)).add(config.mesh1);
+        scene.add(config.group1);
+
+        config.group2 = new THREE.Group();
+        updateGroup2Position();
+        config.group2.add(new THREE.AxisHelper(1000)).add(config.mesh2);
+        scene.add(config.group2);
+
+        window.addEventListener('keydown', onKeyDown, false );
+        window.addEventListener('resize', function() {
+            var aspect = window.innerWidth / window.innerHeight;
+            config.camera1.aspect = aspect; config.camera1.updateProjectionMatrix();
+            config.camera2.aspect = aspect; config.camera2.updateProjectionMatrix();
+            config.cameraX.aspect = aspect; config.cameraX.updateProjectionMatrix();
+            config.camera0.aspect = aspect; config.camera0.updateProjectionMatrix();
+            renderer.setSize( window.innerWidth, window.innerHeight );
+        }, false);
+        container.addEventListener( 'mousedown', function(event) {
+            if (config.freezeInteraction) { return; }
+            if (camera === config.camera0) {
+                config.gridXZ.visible0 = config.gridXZ.visible;
+                config.gridXZ.visible = true;
+                return;
+            }
+            isUserInteracting = true;
+            onPointerDownPointerX = event.clientX;
+            onPointerDownPointerY = event.clientY;
+            onPointerDownLon = config.lon;
+            onPointerDownLat = config.lat;
+        }, false );
+        document.addEventListener( 'mousemove', function(event) {
+            if (config.freezeInteraction) { return; }
+            if (camera === config.camera0) { return; }
+            if ( isUserInteracting === true ) {
+                setCursorStyle("all-scroll");
+                config.lon = ( onPointerDownPointerX - event.clientX ) * 0.1 + onPointerDownLon;
+                config.lat = ( event.clientY - onPointerDownPointerY ) * 0.1 + onPointerDownLat;
+            }
+        }, false );
+        container.addEventListener( 'mouseup', function(event) {
+            if (config.freezeInteraction) { return; }
+            if (camera === config.camera0) {
+                config.gridXZ.visible = config.gridXZ.visible0;
+                return;
+            }
+            isUserInteracting = false;
+            setCursorStyle();
+        }, false );
+        container.addEventListener( 'wheel', function(event) {
+            if (config.freezeInteraction) { return; }
+            if (camera === config.camera0) {
+                console.log("!!");
+                return;
+            }
+            var fov = camera.fov + event.deltaY * 0.05;
+            camera.fov = THREE.Math.clamp(Math.round(fov), config.fovMin, config.fovMax);
+            // camera.updateProjectionMatrix();
+        }, false );
+
+        onAlphaChange(config.alpha);
+        // config.material1.wireframe = true; config.material2.wireframe = true;
+
+        animate();
+    }, false);
+
+    var animate = function(time) {
+        window.requestAnimationFrame(animate);
+        TWEEN.update();
+
+        // helper
+        cams.forEach(function(cam){
+            cam.camHelper.visible = cam !== camera;
+        });
+        config.rotationCenter.visible = camera === config.camera0;
+        config.rotationCenter.position.copy(config.cam0Controls.target);
+
+        if (camera === config.camera0) {
+            config.cam0Controls.update(config.clock.getDelta());
+        } else if (!isDesktop) {
+            // TODO, calculate lon, lat
+            controls.update();
+        } else {
+            if (config.lon > 360) { config.lon -= 360; }
+            if (config.lon <   0) { config.lon += 360; }
+            config.lat = Math.max(-85, Math.min(85, config.lat));
+            var phi = THREE.Math.degToRad(90 - config.lat);
+            var theta = THREE.Math.degToRad(config.lon);
+            camera.target.x = 500 * Math.sin(phi) * Math.cos(theta);
+            camera.target.y = 500 * Math.cos(phi);
+            camera.target.z = 500 * Math.sin(phi) * Math.sin(theta);
+            camera.lookAt( camera.target.add(camera.position) );
+            if (camera === config.camera1) {
+                config.lon1 = config.lon;
+                config.lat1 = config.lat;
+            } else if (camera == config.camera2) {
+                config.lon2 = config.lon;
+                config.lat2 = config.lat;
+            }
+        }
+
+        config.camera1.position.copy(config.group1.position);
+        config.camera2.position.copy(config.group2.position);
+
+        if (!config.freezeInteraction) { }
+
+        // cams
+        config.camera0.updateProjectionMatrix(); config.cam0Helper.update();
+        config.camera1.updateProjectionMatrix(); config.cam1Helper.update();
+        config.camera2.updateProjectionMatrix(); config.cam2Helper.update();
+        config.cameraX.updateProjectionMatrix(); config.camXHelper.update();
+
+        renderer.render( scene, camera );
+    };
+
+    function onKeyDown(event) {
+        var code = event.keyCode;
+        if (16 <= code && code <= 18) { // shift, control, alt
+            return;
+        }
+        /*
+        if (event.ctrlKey) {
+            switch (code) {
+                // up, down, left, righ
+                case 38: config.cam0Controls.target.x -= 0.1; break;
+                case 40: config.cam0Controls.target.x += 0.1; break;
+                case 37: config.cam0Controls.target.z -= 0.1; break;
+                case 39: config.cam0Controls.target.z += 0.1; break;
+                default:
+                    ;
+            }
+        }
+        */
+        switch (code) {
+
+            case 48: ; break; // 0
+            case 49: ; break; // 1
+            case 50: ; break; // 2
+            case 51: ; break; // 3
+
+            case 52: config.cam0Controls.target.x -= config.deltaMove; break; // 4
+            case 53: config.cam0Controls.target.x += config.deltaMove; break; // 5
+            case 54: config.cam0Controls.target.z += config.deltaMove; break; // 6
+            case 55: config.cam0Controls.target.z -= config.deltaMove; break; // 7
+
+            case 56: config.deltaMove = Math.max(1,  config.deltaMove-1); break; // 8
+            case 57: config.deltaMove = Math.min(10, config.deltaMove+1); break; // 9
+
+            case 69: // e
+                break;
+            case 70: // f
+                break;
+            case 38: // up
+                if (camera !== config.camera0) {
+                    config.alpha += 0.01;
+                    if (config.alpha > 1.0) {
+                        config.alpha = 1.0;
+                    }
+                    onAlphaChange(config.alpha);
+                } else {
+                    config.cam0Controls.target.x += 0.1;
+                }
+                break;
+            case 40: // down
+                if (camera !== config.camera0) {
+                    config.alpha -= 0.01;
+                    if (config.alpha < 0.0) {
+                        config.alpha = 0.0;
+                    }
+                    onAlphaChange(config.alpha);
+                } else {
+                    // onAlphaChange(1.0, 1.0);
+                    config.cam0Controls.target.x -= 0.1;
+                }
+                break;
+            case 37: // left
+                if (camera !== config.camera0) {
+                } else {
+                    config.cam0Controls.target.z += 0.1;
+                }
+                break;
+            case 39: // right
+                if (camera !== config.camera0) {
+                } else {
+                    config.cam0Controls.target.z += 0.1;
+                }
+                break;
+
+            case 13: // enter
+                switchToCam();
+                break;
+            default:
+                console.log("keyCode: "+event.keyCode);
+        }
+    }
+
+</script>
+
+</body>
+</html>

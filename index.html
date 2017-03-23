@@ -250,17 +250,15 @@
                 var lon = uv.x * 360;
                 var lat = (uv.y-0.5) * 180;
                 $("#cursor-log-code")[0].innerHTML = JSON.stringify({
-                    "lon": lon,
-                    "lat": lat
+                    "lon": lon.toFixed(5),
+                    "lat": lat.toFixed(5)
                 },null,4);
-                if (config.padding === undefined) { config.padding = 40; }
-                var left = "", right = "", top = "", bottom = "";
-                left = event.clientX - $cursor.width()/2;
-                bottom = window.innerHeight - event.clientY + config.padding;
+                var left = event.clientX - $cursor.width()/2;
+                var bottom = window.innerHeight - event.clientY + 40;
                 $cursor.css({
                     "left": left,
-                    "right": right,
-                    "top": top,
+                    "right": "",
+                    "top": "",
                     "bottom": bottom
                 }).show();
             }

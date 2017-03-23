@@ -58,11 +58,35 @@
         .labels > span > ul > li.label3 { background: blue; }
         .labels > span > ul > li.label4 { background: yellow; }
 
+        .log {
+            position: absolute;
+            left: 0px;
+            bottom: 0px;
+            margin: 2px;
+            padding: 2px;
+            border: 1px solid white;
+            color: white;
+            font-size: 8px;
+            max-width: 50%;
+            max-height: 60%;
+            min-width: 200px;
+            background-color: rgba(0,0,0,0.4);
+            overflow-y: auto;
+            z-index: 1000;
+        }
+        #cursor-log {
+            margin: 0;
+            padding: 2px;
+            border: none;
+            min-width: 0px;
+            min-height: 0px;
+        }
     </style>
 </head>
 <body>
 
 <div id="container"></div>
+<div class="log" id="cursor-log"><pre><code id="cursor-log-code"></code></pre></div>
 <div class="pic pic1"><a href="texture1.jpg" target="_blank"><img id="pic1" src="texture1.jpg" style="width:200px;height:100px;" alt="左" /></a></div>
 <div class="pic pic2"><a href="texture2.jpg" target="_blank"><img id="pic2" src="texture2.jpg" style="width:200px;height:100px;" alt="右" /></a></div>
 
@@ -84,6 +108,8 @@
     "use strict";
 
     var Config = function() {
+        this.points = [];
+
         var _this = this;
         this.clock = new THREE.Clock();
 
@@ -139,43 +165,46 @@
         this.farMin = 100;
         this.farMax = 10000;
 
-        this.alpha = 0.5;
+        this.alpha = 1.0;
         this.deltaMove = 8;
 
         // axis helper
         this.globalAxis = new THREE.AxisHelper(1000);
         this.group1Axis = new THREE.AxisHelper(1000);
         this.group2Axis = new THREE.AxisHelper(1000);
+        this.cam0Axis   = new THREE.AxisHelper(1000);
 
         // cameras
         this.camera1 = new THREE.PerspectiveCamera(this.fov, window.innerWidth / window.innerHeight, 100, 2000);
         this.camera2 = new THREE.PerspectiveCamera(this.fov, window.innerWidth / window.innerHeight, 100, 2000);
+        this.camera0 = new THREE.PerspectiveCamera(this.fov, window.innerWidth / window.innerHeight, 100, 200000); this.camera0.position.set(-2000, 0, 0);
         this.cameraX = new THREE.PerspectiveCamera(this.fov, window.innerWidth / window.innerHeight, 100, 2000);
-        this.camera1.target = new THREE.Vector3( 0, 0, 0 );
-        this.camera2.target = new THREE.Vector3( 0, 0, 0 );
-        this.cameraX.target = new THREE.Vector3( 0, 0, 0 );
-        this.camera1.lon = this.camera2.lon = this.cameraX.lon = 0;
-        this.camera1.lat = this.camera2.lat = this.cameraX.lat = 0;
-        // orbit control camera
-        this.camera0 = new THREE.PerspectiveCamera(this.fov, window.innerWidth / window.innerHeight, 100, 200000);
-        this.camera0.position.set(-2000, 0, 0);
-        this.camera0.isCam0 = true;
-
-        this.cameraIndex = 1; // init to cam 1
 
         this.camera0.name = "CAM 0";
         this.camera1.name = "CAM 1";
         this.camera2.name = "CAM 2";
         this.cameraX.name = "CAM X";
 
+        this.camera1.isCamP = true; // panoramic camera
+        this.camera2.isCamP = true;
+        this.camera0.isCam0 = true; // orbit controlled cam
+        this.cameraX.isCamX = true;
+
+        this.camera1.lon = this.camera2.lon = this.cameraX.lon = 0;
+        this.camera1.lat = this.camera2.lat = this.cameraX.lat = 0;
+
+        this.cameraIndex = 1; // init to cam 1
+
         this.cam1Helper = new THREE.CameraHelper( this.camera1 );
         this.cam2Helper = new THREE.CameraHelper( this.camera2 );
         this.camXHelper = new THREE.CameraHelper( this.cameraX );
         this.cam0Helper = new THREE.CameraHelper( this.camera0 );
 
-        this.cam1Light = new THREE.DirectionalLight(0xffffff);
-        this.cam2Light = new THREE.DirectionalLight(0xffffff);
+        // groups
+        this.group1 = new THREE.Group();
+        this.group2 = new THREE.Group();
 
+        // screenshot panorama
         this.savePanorama = function() {
             var equiManaged = new CubemapToEquirectangular( renderer, true );
             equiManaged.setSize( 2048, 1024 );
@@ -183,20 +212,22 @@
         };
         this.needUpdateScreenshot = false;
 
-        this.showOffsetToNorth = false;
+        // able to edit offset to north?
+        this.canEditOffsetToNorth = false;
         this.offsetToNorth1 = 0;
         this.offsetToNorth2 = 0;
 
-        this.freezeInteraction = false;
+        this.freeze = false;
+
         this.dual = function() {
             $(".close-button").click();
             // matchesGroup1.visible = matchesGroup2.visible = false;
-            // _this.freezeInteraction = true;
+            // _this.freeze = true;
             _this.alpha0 = _this.alpha;
         };
 
-        this.light = new THREE.AmbientLight(0xffffff);
-        this.gridXZ = new THREE.GridHelper(10000, 100, 0x00ff00, 0x00ff00);
+        this.light = new THREE.AmbientLight(0xffffff); // can be turned off
+        this.gridXZ = new THREE.GridHelper(10000, 100, 0x888888, 0x888888);
         this.gridXZ.visible = false;
     };
     var config = new Config();
@@ -209,19 +240,31 @@
     function updateGroup2Position() {
         var theta = THREE.Math.degToRad(config.group2OffsetNorth);
         var radius = config.group2Distance;
-        var x = Math.sin(theta) * radius;
+        var x =  Math.sin(theta) * radius;
         var z = -Math.cos(theta) * radius;
         config.group2.position.set(x,0,z);
     }
 
-    var geometryFolder = gui.addFolder('全景位置'); geometryFolder.closed = false;
+    var setScale = function(geometry) {
+        var scale0 = 1;
+        var geometry = geometry;
+        if (geometry) {
+            return function(scale) {
+                var s = scale / scale0;
+                geometry.scale(s,s,s);
+                scale0 = scale;
+            };
+        } else {
+            return function(){};
+        }
+    };
+
+    sphere = new THREE.SphereGeometry( 500, 64, 32 ); sphere.scale( -1, 1, 1 );
+
+    var geometryFolder = gui.addFolder('全景位置'); // geometryFolder.closed = false;
     geometryFolder.add(config, 'group2Distance').min(0).max(10000).step(1).onChange(updateGroup2Position).name("距离")
     geometryFolder.add(config, 'group2OffsetNorth').min(0).max(360).step(1).onChange(updateGroup2Position).name("角度");
-    geometryFolder.add(config, 'sphereScale').min(0.5).max(10).step(0.1).onChange(function(value){
-        var scale = value / config.sphereScale0;
-        sphere.scale(scale,scale,scale);
-        config.sphereScale0 = value;
-    }).name("大小");
+    geometryFolder.add(config, 'sphereScale').min(0.5).max(10).step(0.1).onChange(setScale(sphere)).name("大小");
     var offsetFolder = geometryFolder.addFolder('偏移量');
     var onShowOffset = function (show) {
         if (show) {
@@ -232,22 +275,15 @@
             if (config.offsetController2) { offsetFolder.remove(config.offsetController2); }
         }
     };
-    offsetFolder.add(config, 'showOffsetToNorth').onChange(onShowOffset).name("修改偏移量");
+    offsetFolder.add(config, 'canEditOffsetToNorth').onChange(onShowOffset).name("修改偏移量");
 
-    function toggleShowPic(show) {
-        if (show) {
-            $(".pic").show();
-        } else {
-            $(".pic").hide();
-        }
-    }
 
     // gui.add(config, 'fov').min(10).max(100).step(1).listen().name("视场角").onChange(updateCameraFov);
     gui.add(config, 'savePanorama').name("把场景存成全景图");
     gui.add(config, 'deltaMove').min(1).max(10).step(1).listen().name("移动速度");
 
     var flags = gui.addFolder("变量的设定");
-    flags.add(config, 'showPic').name("显示原图").onFinishChange(toggleShowPic);
+    flags.add(config, 'showPic').name("显示原图").onFinishChange(function (show){ if (show) { $(".pic").show(); } else { $(".pic").hide(); } });
     flags.add(config.light, 'visible').listen().name("显示灯光");
     flags.add(config.gridXZ, 'visible').listen().name("显示地平线");
     flags.add(config, 'toggleCamHelperVisibility').listen().name("显示/隐藏相机");
@@ -272,6 +308,33 @@
             );
         }
     }
+
+    var createFeaturePoint = function() {
+        var point = new THREE.SphereGeometry( 1, 64, 32); config.point = point;
+        var mat1 = new THREE.MeshBasicMaterial( { color: 0x000000, transparent: true, opacity: 0.0 } );
+        var mat2 = new THREE.MeshBasicMaterial( { color: 0x0000ff, side: THREE.DoubleSide } );
+        // shit
+        return function(lon, lat, radius) {
+            var group = new THREE.Group();
+            group.setColor = function(r,g,b) {
+                group.children[1].material.color.setRGB(r,g,b);
+            };
+            var pt = new THREE.Mesh( point, mat1 );
+            var ct = new THREE.Mesh( point, mat2.clone() );
+            pt.scale.multiplyScalar(0.1);
+            ct.scale.multiplyScalar(10);
+            group.add( pt );
+            group.add( ct );
+            if (lon !== undefined && lat !== undefined) {
+                var radius = radius || 400;
+                var v = Util.lonlat2xyz(lon, lat, radius);
+                group.position.set(v.x,v.y,v.z);
+                scene.add(group);
+                config.points.push(group);
+            }
+            return group;
+        };
+    }();
 
     var cams = [config.camera0, config.camera1, config.camera2, config.cameraX];
     function switchToCam(index) {
@@ -356,6 +419,9 @@
     gui.add(config.material1, 'opacity').min(0.0).max(1.0).step(0.01).listen().name("全景 1 不透明度");
     gui.add(config.material2, 'opacity').min(0.0).max(1.0).step(0.01).listen().name("全景 2 不透明度");
 
+    config.featurePointScale = 1.0;
+    gui.add(config, 'featurePointScale').min(0.5).max(10).step(0.1).onChange(setScale(config.point)).name("特征点大小");
+
     function setCursorStyle(style) {
         $("body").removeClass();
         if (style) {
@@ -363,22 +429,19 @@
         }
     }
 
+    var $info = config.$info = (config.$info || $("#cursor-log-code"));
+    var $iBox = config.$iBox = (config.$iBox || config.$info.parent().parent());
+
     var container, camera, scene, renderer, sphere, controls;
     var raycaster = new THREE.Raycaster();
-    var mouse = new THREE.Vector2();
-    var onClickPosition = new THREE.Vector2();
 
     var isUserInteracting = false;
     var onPointerDownPointerX = 0, onPointerDownPointerY = 0, onPointerDownLon = 0, onPointerDownLat = 0;
 
-    var getMousePosition = function ( dom, x, y ) {
-        var rect = dom.getBoundingClientRect();
-        return [ ( x - rect.left ) / rect.width, ( y - rect.top ) / rect.height ];
-    };
-    var getIntersects = function ( point, objects ) {
-        mouse.set( ( point.x * 2 ) - 1, - ( point.y * 2 ) + 1 );
+    var getIntersects = function ( point, objects, recursive ) {
+        var mouse = new THREE.Vector2( ( point.x * 2 ) - 1, - ( point.y * 2 ) + 1  );
         raycaster.setFromCamera( mouse, camera );
-        return raycaster.intersectObjects( objects, true );
+        return raycaster.intersectObjects( objects, recursive);
     };
 
     var isDesktop = !navigator.userAgent.match(/(iPhone|iPod|iPad|Android|BlackBerry|BB10|mobi|tablet|opera mini|nexus 7)/i);
@@ -390,13 +453,19 @@
         scene.add(config.light);
         scene.add(config.gridXZ);
 
+        /*
+        var s = new THREE.Mesh( new THREE.SphereGeometry( 50, 64, 32 ));
+        s.position.set(300, 20, 10);
+        var m = new THREE.Mesh( s, new THREE.MeshBasicMaterial({color: 0xff0000, wireframe: true}));
+        scene.add(m);
+        config.points.push(m);
+        */
+
         // cameras
         scene.add(config.camera1).add(config.cam1Helper );
         scene.add(config.camera2).add(config.cam2Helper );
         scene.add(config.cameraX).add(config.camXHelper );
         scene.add(config.camera0).add(config.cam0Helper );
-        scene.add(config.cam1Light);
-        scene.add(config.cam2Light);
 
         // renderer
         container = document.getElementById( 'container' );
@@ -424,59 +493,33 @@
 
         config.texture1 = new THREE.TextureLoader().load("texture1.jpg");
         config.texture2 = new THREE.TextureLoader().load("texture2.jpg");
-        // config.texture1.wrapS = config.texture2.wrapS = THREE.RepeatWrapping;
-        // config.texture1.wrapT = config.texture2.wrapT = THREE.RepeatWrapping;
+        config.texture1.wrapS = config.texture2.wrapS = THREE.RepeatWrapping;
+        config.texture1.wrapT = config.texture2.wrapT = THREE.RepeatWrapping;
 
         config.material1.map = config.texture1; config.material1.side = THREE.DoubleSide;
         config.material2.map = config.texture2; config.material2.side = THREE.DoubleSide;
 
-        sphere = new THREE.SphereGeometry( 500, 64, 32 ); // sphere.scale( -1, 1, 1 );
-        /*
-        for ( var i = 0; i < sphere.faceVertexUvs[ 0 ].length; i ++ ) {
-            var uvs = sphere.faceVertexUvs[ 0 ][ i ];
-            for ( var j = 0; j < 3; j ++ ) {
-                console.log(JSON.stringify({
-                    "x": uvs[ j ].x,
-                    "y": uvs[ j ].y
-                }, null, 4));
-            }
-        }
-        */
+
+        scene.add(config.globalAxis);
+        scene.add(config.cam0Axis);
 
         config.mesh1 = new THREE.Mesh( sphere, config.material1 );
         config.mesh2 = new THREE.Mesh( sphere, config.material2 );
 
-        scene.add(config.globalAxis);
+        // groups
+        scene.add( config.group1.add(config.group1Axis).add(config.mesh1) );
+        scene.add( config.group2.add(config.group2Axis).add(config.mesh2) );
 
-        config.cam0Axis = new THREE.AxisHelper(1000);
-        scene.add(config.cam0Axis);
-
-        config.group1 = new THREE.Group();
-        config.group1.add(config.group1Axis).add(config.mesh1);
-        scene.add(config.group1);
-
-        config.group2 = new THREE.Group();
         updateGroup2Position();
-        config.group2.add(config.group2Axis).add(config.mesh2);
-        scene.add(config.group2);
-
-        (function() {
-            var sphere = new THREE.SphereGeometry( 100, 64, 32 );
-            sphere.scale(-1,1,1);
-            // var material = new THREE.MeshBasicMaterial({map: cubeTexture});
-            var material = new THREE.MeshBasicMaterial({
-                map: new THREE.TextureLoader().load("texture.jpg")
-            });
-            var sphereMesh = new THREE.Mesh( sphere, material);
-            sphereMesh.position.set(200,0,0);
-            scene.add(sphereMesh);
-        })();
 
         // init
         onAlphaChange(config.alpha);
         config.toggleCamHelperVisibility();
         config.toggleAxisHelperVisibility();
 
+        createFeaturePoint(0,0);
+        createFeaturePoint(20, 20);
+        createFeaturePoint(30, 10);
         animate();
 
         window.addEventListener('keydown', onKeyDown, false );
@@ -488,50 +531,69 @@
             });
             renderer.setSize( window.innerWidth, window.innerHeight );
         }, false);
-        container.addEventListener( 'mousedown', function(event) {
-            if (config.freezeInteraction) { return; }
+        document.addEventListener( 'mousedown', function(event) {
+            if (config.freeze) { return; }
             //
             if (camera.isCam0) {
                 config.gridXZ.visible0 = config.gridXZ.visible;
                 config.gridXZ.visible = true;
                 return;
-            } else if (camera.lon !== undefined && camera.lat !== undefined) {
-                setCursorStyle("all-scroll");
-                isUserInteracting = true;
-                onPointerDownPointerX = event.clientX;
-                onPointerDownPointerY = event.clientY;
-                onPointerDownLon = camera.lon;
-                onPointerDownLat = camera.lat;
+            } else if (camera.isCamP) {
+                if (config.raycastUV) {
+                    var array = [event.clientX / window.innerWidth, event.clientY / window.innerHeight];
+                    var intersects = getIntersects( new THREE.Vector2().fromArray(array), config.points, false);
+                    // var intersects = getIntersects( new THREE.Vector2().fromArray(array), config.points, true);
+                    if (intersects.length > 0) {
+                        var point = intersects[0];
+                        point.setColor(Math.random(), Math.random(), Math.random());
+                    } else {
+                        console.log("no match");
+                    }
+                } else {
+                    setCursorStyle("all-scroll");
+                    isUserInteracting = true;
+                    onPointerDownPointerX = event.clientX;
+                    onPointerDownPointerY = event.clientY;
+                    onPointerDownLon = camera.lon;
+                    onPointerDownLat = camera.lat;
+                }
             }
         }, false );
         document.addEventListener( 'mousemove', function(event) {
-            if (config.freezeInteraction) { return; }
-            // if (camera.isCam0) { return; }
-            if (config.raycastUV) {
-                var array = [event.clientX / window.innerWidth, event.clientY / window.innerHeight];
-                onClickPosition.fromArray( array );
-                var intersects = getIntersects( onClickPosition, scene.children );
-
-                if ( intersects.length > 0 && intersects[0].uv) {
-                    var uv = intersects[0].uv;
-                    console.log(uv.x + ", " + uv.y);
-                    // intersects[ 0 ].object.material.map.transformUv( uv );
-                    // canvas.setCrossPosition( uv.x, uv.y );
-                } else {
-                    console.log("nothing");
-                }
-                return;
-            }
-
-            if (camera.lon !== undefined && camera.lat !== undefined) {
+            if (config.freeze) { return; }
+            if (camera.isCam0) { return; }
+            if (camera.isCamP) {
                 if ( isUserInteracting === true ) {
                     camera.lon = ( onPointerDownPointerX - event.clientX ) * 0.1 + onPointerDownLon;
                     camera.lat = ( event.clientY - onPointerDownPointerY ) * 0.1 + onPointerDownLat;
+                } else if (config.raycastUV) {
+                    var array = [event.clientX / window.innerWidth, event.clientY / window.innerHeight];
+                    if (Math.abs(array[0]-0.5) > 0.45 || Math.abs(array[1]-0.5)>0.45) {
+                        // $iBox.fadeOut(); return;
+                    }
+                    var mesh = camera === config.camera1 ? [config.mesh1] : [config.mesh2];
+                    var intersects = getIntersects( new THREE.Vector2().fromArray(array), mesh, true );
+                    if ( intersects.length > 0 && intersects[0].uv) {
+                        var uv = intersects[0].uv;
+                        var pLon = uv.x * 360;
+                        var pLat = (uv.y-0.5) * 180;
+                        // $info[0].innerHTML = JSON.stringify({ "lon": lon.toFixed(5), "lat": lat.toFixed(5), "u": uv.x.toFixed(5), "v": uv.y.toFixed(5) }, null, 4);
+                        $info[0].innerHTML = ""+
+                            pLon.toFixed(5) + ", "+
+                            pLat.toFixed(5) + "\n"+
+                            uv.x.toFixed(5) + ", "+
+                            uv.y.toFixed(5) + "\n";
+                        var left = event.clientX - $info.width()/2;
+                        var bottom = window.innerHeight - event.clientY + 40;
+                        $iBox.css({ "left": left, "right": "", "top": "", "bottom": bottom }).show();
+                    }
+                } else {
+                    $iBox.fadeOut();
                 }
             }
         }, false );
         container.addEventListener( 'mouseup', function(event) {
-            if (config.freezeInteraction) { return; }
+            if (config.freeze) { return; }
             if (camera.isCam0) {
                 config.gridXZ.visible = config.gridXZ.visible0;
             } else if (camera.lon !== undefined && camera.lat !== undefined) {
@@ -540,7 +602,7 @@
             }
         }, false );
         container.addEventListener( 'wheel', function(event) {
-            if (config.freezeInteraction) { return; }
+            if (config.freeze) { return; }
             var fov = camera.fov + event.deltaY * 0.05;
             camera.fov = THREE.Math.clamp(Math.round(fov), config.fovMin, config.fovMax);
         }, false );
@@ -562,18 +624,14 @@
             while (camera.lon > 360) { camera.lon -= 360; }
             while (camera.lon <   0) { camera.lon += 360; }
             camera.lat = Math.max(-85, Math.min(85, camera.lat));
-
             var v = Util.lonlat2xyz(camera.lon, camera.lat, 500);
-            camera.target.x = v.x;
-            camera.target.y = v.y;
-            camera.target.z = v.z;
-            camera.lookAt( camera.target.add(camera.position) );
+            camera.lookAt( new THREE.Vector3(v.x,v.y,v.z).add( camera.position ) );
         }
 
         config.camera1.position.copy(config.group1.position);
         config.camera2.position.copy(config.group2.position);
 
-        if (!config.freezeInteraction) { }
+        if (!config.freeze) { }
 
         // cams
         config.camera0.updateProjectionMatrix(); config.cam0Helper.update();
@@ -640,7 +698,7 @@
             case 32: // space
                 if (camera.isCam0) {
                     config.cam0Controls.target.setScalar(0);
-                } else {
+                } else if (camera.isCamP){
                     config.raycastUV = !config.raycastUV;
                 }
                 break;

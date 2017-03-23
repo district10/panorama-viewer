@@ -121,6 +121,17 @@ var _Util = function() {
         };
     }
 
+    this.useIntrusiveUtils = function() {
+        // new Number(23).toRad()
+        Number.prototype.toRad = function() { return this * Math.PI / 180; };
+        Number.prototype.toDeg = function() { return this * 180 / Math.PI; };
+        Array.prototype.remove = function(from, to) {
+            var rest = this.slice((to || from) + 1 || this.length);
+            this.length = from < 0 ? this.length + from : from;
+            return this.push.apply(this, rest);
+        };
+    };
+
     return _this;
 };
 

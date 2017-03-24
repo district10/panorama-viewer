@@ -76,7 +76,7 @@
         }
         #cursor-log {
             margin: 0;
-            padding: 2px;
+            padding: 10px;
             border: none;
             min-width: 0px;
             min-height: 0px;
@@ -109,6 +109,17 @@
 
     var Config = function() {
         this.points = [];
+
+        this.loadPOI = Util.fileInputReadAsText(function(text){
+            var pois = JSON.parse(text);
+            var ret = {};
+            pois.forEach(function(poi){
+                ret[poi.name] = poi;
+            });
+            config.points.forEach(function(poi){
+                setPOI(poi, ret[poi.name]);
+            });
+        });
 
         var _this = this;
         this.clock = new THREE.Clock();
@@ -235,6 +246,27 @@
 
     var gui = new dat.GUI(); gui.closed = true;
 
+    config.slerp = 0;
+    gui.add(config, 'slerp').min(0).max(1).step(0.1).listen().onChange(function(s){
+        if (config.fromPOI && config.toPOI && config.fromPOI !== config.toPOI) {
+            var v = new THREE.Vector3(0, 1, 0);
+            var f = new THREE.Quaternion().setFromUnitVectors(v, config.fromPOI.position.clone().normalize());
+            var t = new THREE.Quaternion().setFromUnitVectors(v, config.toPOI.position.clone().normalize());
+            var q = new THREE.Quaternion();
+            THREE.Quaternion.slerp(f, t, q, s);
+            q.normalize();
+            v.applyQuaternion(q);
+            v.setLength(config.fromPOI.position.length());
+            config.p0.position.copy(v);
+        }
+        /*
+        var q = new THREE.Quaternion(); // .setFromUnitVectors(config.arr1.t)
+        THREE.Quaternion.slerp(config.arr1.quaternion, config.arr2.quaternion, q, s);
+        config.arr3.quaternion.copy(q.normalize());
+        // config.arr1.visible = config.arr2.visible = config.arr3.visible = false;
+        */
+    }).name("Slerp");
+    gui.add(config, 'loadPOI').name("加载 POI 点");
     gui.add(config, 'raycastUV').listen().name("Raycast UV");
 
     function updateGroup2Position() {
@@ -245,15 +277,17 @@
         config.group2.position.set(x,0,z);
     }
 
-    var setScale = function(geometry) {
+    var setScale = function(geometry, initScale) {
         var scale0 = 1;
         var geometry = geometry;
+        var ret =  function(scale) {
+            var s = scale / scale0;
+            geometry.scale(s,s,s);
+            scale0 = scale;
+        };
         if (geometry) {
-            return function(scale) {
-                var s = scale / scale0;
-                geometry.scale(s,s,s);
-                scale0 = scale;
-            };
+            if (initScale) { ret(initScale); }
+            return ret;
         } else {
             return function(){};
         }
@@ -309,30 +343,34 @@
         }
     }
 
-    var createFeaturePoint = function() {
+    var addPOI = function() {
         var point = new THREE.SphereGeometry( 1, 64, 32); config.point = point;
-        var mat1 = new THREE.MeshBasicMaterial( { color: 0x000000, transparent: true, opacity: 0.0 } );
-        var mat2 = new THREE.MeshBasicMaterial( { color: 0x0000ff, side: THREE.DoubleSide } );
-        // shit
-        return function(lon, lat, radius) {
-            var group = new THREE.Group();
-            group.setColor = function(r,g,b) {
-                group.children[1].material.color.setRGB(r,g,b);
+        var mat = new THREE.MeshBasicMaterial( { color: 0x0000ff, side: THREE.DoubleSide } );
+        return function(lon, lat, radius, r, g, b, name) {
+            var ret = new THREE.Mesh( point, mat.clone() );
+            ret.isPOI = true;
+            ret.setRGB = function(r,g,b) {
+                if (!ret.inited || (r!==undefined&&g!==undefined&&b!==undefined)) {
+                    ret.material.color.setRGB(
+                        r||Math.random(),
+                        g||Math.random(),
+                        b||Math.random()
+                    );
+                    ret.inited = true;
+                }
             };
-            var pt = new THREE.Mesh( point, mat1 );
-            var ct = new THREE.Mesh( point, mat2.clone() );
-            pt.scale.multiplyScalar(0.1);
-            ct.scale.multiplyScalar(10);
-            group.add( pt );
-            group.add( ct );
-            if (lon !== undefined && lat !== undefined) {
-                var radius = radius || 400;
-                var v = Util.lonlat2xyz(lon, lat, radius);
-                group.position.set(v.x,v.y,v.z);
-                scene.add(group);
-                config.points.push(group);
+            ret.lon = lon || 0;
+            ret.lat = lat || 0;
+            var radius = radius || 400;
+            var v = Util.lonlat2xyz(ret.lon, ret.lat, radius);
+            ret.position.set(v.x,v.y,v.z);
+            config.points.push(ret);
+            if (r!==undefined&&g!==undefined&&b!==undefined) {
+                ret.setRGB(r,g,b);
             }
-            return group;
+            if (name !== undefined) ret.name = name;
+            scene.add(ret);
+            return ret;
         };
     }();
 
@@ -419,8 +457,8 @@
     gui.add(config.material1, 'opacity').min(0.0).max(1.0).step(0.01).listen().name("全景 1 不透明度");
     gui.add(config.material2, 'opacity').min(0.0).max(1.0).step(0.01).listen().name("全景 2 不透明度");
 
-    config.featurePointScale = 1.0;
-    gui.add(config, 'featurePointScale').min(0.5).max(10).step(0.1).onChange(setScale(config.point)).name("特征点大小");
+    config.featurePointScale = 4.0;
+    gui.add(config, 'featurePointScale').min(0.5).max(10).step(0.1).onChange(setScale(config.point, config.featurePointScale)).name("特征点大小");
 
     function setCursorStyle(style) {
         $("body").removeClass();
@@ -453,10 +491,17 @@
         scene.add(config.light);
         scene.add(config.gridXZ);
 
+        config.arr1 = new THREE.ArrowHelper( new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 510, 0xff0000 );
+        config.arr2 = new THREE.ArrowHelper( new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,0), 510, 0x00ff00 );
+        config.arr3 = new THREE.ArrowHelper( new THREE.Vector3(0,0,1), new THREE.Vector3(0,0,0), 510, 0x0000ff );
+        scene.add(config.arr1);
+        scene.add(config.arr2);
+        scene.add(config.arr3);
+
         /*
-        var s = new THREE.Mesh( new THREE.SphereGeometry( 50, 64, 32 ));
-        s.position.set(300, 20, 10);
+        var s = new THREE.SphereGeometry( 50, 64, 32 );
         var m = new THREE.Mesh( s, new THREE.MeshBasicMaterial({color: 0xff0000, wireframe: true}));
+        m.position.set(300, 20, 10);
         scene.add(m);
         config.points.push(m);
         */
@@ -517,9 +562,19 @@
         config.toggleCamHelperVisibility();
         config.toggleAxisHelperVisibility();
 
-        createFeaturePoint(0,0);
-        createFeaturePoint(20, 20);
-        createFeaturePoint(30, 10);
+        // shit
+        addPOI( 0, 10, 200, 1.0, 0.0, 0.0, "P1");
+        addPOI(10, 10, 200, 0.0, 1.0, 0.0, "P2");
+        addPOI(20, 10, 200, 0.0, 0.0, 1.0, "P3");
+        addPOI(30, 10, 200, 1.1, 1.0, 1.0, "P4");
+
+        addPOI( 0,-10, 200, 0.0, 1.0, 1.0, "P5");
+        addPOI(10,-10, 200, 1.0, 0.0, 1.0, "P6");
+        addPOI(20,-10, 200, 1.0, 1.0, 0.0, "P7");
+        addPOI(30,-10, 200, 0.0, 0.0, 0.0, "P8");
+
+        config.p0 = addPOI(0,0, 200, 1.0, 1.0, 1.0, "P0");
+
         animate();
 
         window.addEventListener('keydown', onKeyDown, false );
@@ -532,11 +587,16 @@
             renderer.setSize( window.innerWidth, window.innerHeight );
         }, false);
         document.addEventListener( 'mousedown', function(event) {
+            if (event.target !== renderer.domElement) { return; }
             if (config.freeze) { return; }
             //
             if (camera.isCam0) {
+                // stash
                 config.gridXZ.visible0 = config.gridXZ.visible;
                 config.gridXZ.visible = true;
+                config.material1.opacity0 = config.material1.opacity;
+                config.material2.opacity0 = config.material2.opacity;
+                config.material1.opacity  = config.material2.opacity = 0.5;
                 return;
             } else if (camera.isCamP) {
                 if (config.raycastUV) {
@@ -544,8 +604,15 @@
                     var intersects = getIntersects( new THREE.Vector2().fromArray(array), config.points, false);
                     // var intersects = getIntersects( new THREE.Vector2().fromArray(array), config.points, true);
                     if (intersects.length > 0) {
-                        var point = intersects[0];
-                        point.setColor(Math.random(), Math.random(), Math.random());
+                        var point = intersects[0].object;
+                        if (point && point.setRGB) {
+                            if (!point.inited) {
+                                point.setRGB(Math.random(), Math.random(), Math.random());
+                                point.inited = true;
+                            }
+                            config.pickle = point;
+                            setCursorStyle("pointer");
+                        }
                     } else {
                         console.log("no match");
                     }
@@ -572,20 +639,39 @@
                         // $iBox.fadeOut(); return;
                     }
                     var mesh = camera === config.camera1 ? [config.mesh1] : [config.mesh2];
-                    var intersects = getIntersects( new THREE.Vector2().fromArray(array), mesh, true );
+                    var objects = config.pickle ? mesh : config.points.concat(mesh);
+                    var intersects = getIntersects( new THREE.Vector2().fromArray(array), objects, true );
                     if ( intersects.length > 0 && intersects[0].uv) {
-                        var uv = intersects[0].uv;
-                        var pLon = uv.x * 360;
-                        var pLat = (uv.y-0.5) * 180;
-                        // $info[0].innerHTML = JSON.stringify({ "lon": lon.toFixed(5), "lat": lat.toFixed(5), "u": uv.x.toFixed(5), "v": uv.y.toFixed(5) }, null, 4);
-                        $info[0].innerHTML = ""+
-                            pLon.toFixed(5) + ", "+
-                            pLat.toFixed(5) + "\n"+
-                            uv.x.toFixed(5) + ", "+
-                            uv.y.toFixed(5) + "\n";
-                        var left = event.clientX - $info.width()/2;
-                        var bottom = window.innerHeight - event.clientY + 40;
-                        $iBox.css({ "left": left, "right": "", "top": "", "bottom": bottom }).show();
+                        var o = intersects[0];
+                        var uv = o.uv;
+                        var lonlat = Util.uv2lonlat(uv.x, uv.y);
+                        var pLon = lonlat.lon.toFixed(4);
+                        var pLat = lonlat.lat.toFixed(4);
+                        if (o.object && o.object.isPOI) {
+                            setCursorStyle("pointer");
+                            var obj = o.object;
+                            var text = (obj.name || obj.uuid) + "\n" + obj.lon + ", " + obj.lat;
+                            $info[0].innerHTML = text;
+                            config.hoveredPOI = o.object;
+                        } else {
+                            config.hoveredPOI = null;
+                            setCursorStyle();
+                            $info[0].innerHTML = ""+
+                                pLon + ", "+ pLat+ "\n"+
+                                uv.x.toFixed(5) + ", "+
+                                uv.y.toFixed(5) + "\n";
+                        }
+                        // update dragged object
+                        if (config.pickle) {
+                            config.pickle.position.copy(o.point);
+                            config.pickle.lon = lonlat.lon;
+                            config.pickle.lat = lonlat.lat;
+                            $iBox.fadeOut();
+                        } else {
+                            var left = event.clientX - $info.width()/2;
+                            var bottom = window.innerHeight - event.clientY + 40;
+                            $iBox.css({ "left": left, "right": "", "top": "", "bottom": bottom }).fadeIn();
+                        }
                     }
                 } else {
                     $iBox.fadeOut();
@@ -595,11 +681,15 @@
         container.addEventListener( 'mouseup', function(event) {
             if (config.freeze) { return; }
             if (camera.isCam0) {
+                // resume
                 config.gridXZ.visible = config.gridXZ.visible0;
-            } else if (camera.lon !== undefined && camera.lat !== undefined) {
+                config.material1.opacity = config.material1.opacity0;
+                config.material2.opacity = config.material2.opacity0;
+            } else if (camera.isCamP) {
                 isUserInteracting = false;
                 setCursorStyle();
             }
+            config.pickle = null;
         }, false );
         container.addEventListener( 'wheel', function(event) {
             if (config.freeze) { return; }
@@ -737,6 +827,36 @@
     $.contextMenu({
         selector: 'body',
         build: function($triggerElement, event) {
+            if (config.hoveredPOI) {
+                var poi = config.hoveredPOI;
+                if (poi.isPOI) {
+                    return {
+                        items: {
+                            from: {
+                                name: "Set as From",
+                                callback: function () {
+                                    config.fromPOI = poi;
+                                    return true;
+                                }
+                            },
+                            to: {
+                                name: "Set as To",
+                                callback: function () {
+                                    config.toPOI = poi;
+                                    return true;
+                                }
+                            },
+                            clear: {
+                                name: "Clear From&To",
+                                callback: function () {
+                                    config.fromPOI = config.toPOI = null;
+                                    return true;
+                                }
+                            }
+                        }
+                    };
+                }
+            }
             return {
                 selectableSubMenu: true,
                 callback: function (key, opt) {
@@ -833,6 +953,53 @@
             $("body").contextMenu(_show);
         };
     }();
+
+    function serializePOI() {
+        var ret = [];
+        config.points.forEach(function(poi){
+            ret.push({
+                name: poi.name,
+                lon: poi.lon,
+                lat: poi.lat,
+                position: poi.position
+            });
+        });
+        var url = 'data:text/json;charset=utf8,' + encodeURIComponent(JSON.stringify(ret));
+        window.open(url, '_blank');
+        window.focus();
+    }
+
+    function setPOI(poi, json) {
+        if (
+            poi  !== undefined && poi.isPOI &&
+            json !== undefined && poi.name === json.name
+        ) {
+            poi.lon = json.lon;
+            poi.lat = json.lat;
+            if (json.position !== undefined) {
+                poi.position.set(
+                    json.position.x,
+                    json.position.y,
+                    json.position.z
+                );
+            }
+        }
+    }
+
+    /*
+    var sprite = function() {
+        var canvas1 = document.createElement('canvas');
+        var context1 = canvas1.getContext('2d');
+        context1.font = "Bold 20px Arial";
+        context1.fillStyle = "rgba(0,0,0,0.95)";
+        context1.fillText('Hello, world!', 0, 20);
+        var spriteMaterial = new THREE.SpriteMaterial( { map: texture1, useScreenCoordinates: true, alignment: THREE.SpriteAlignment.topLeft } );
+        sprite1 = new THREE.Sprite( spriteMaterial );
+        sprite1.scale.set(200,100,1.0);
+        sprite1.position.set( 50, 50, 0 );
+        scene.add( sprite1 );
+    };
+    */
 
 </script>
 

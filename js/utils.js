@@ -88,6 +88,13 @@ var _Util = function() {
         };
     };
 
+    this.lonlat2uv = function(lon, lat) {
+        return {
+            "u": lon/360,
+            "v": lat/180+0.5
+        };
+    };
+
     this.lonlat2xyz = function(lon, lat, radius) {
         var phi = THREE.Math.degToRad(90 - lat);
         var theta = THREE.Math.degToRad(lon);
@@ -124,7 +131,7 @@ var _Util = function() {
         var phi = Math.acos( y / r );
         return {
             "lon": THREE.Math.radToDeg(theta),
-            "lot": 90 - THREE.Math.radToDeg(phi)
+            "lat": 90 - THREE.Math.radToDeg(phi)
         };
     }
 

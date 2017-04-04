@@ -113,6 +113,12 @@
         this.exampleDual2 = function(){
             window.location = "dual2.html";
         };
+        this.exampleDual3 = function(){
+            window.location = "dual3.html";
+        };
+        this.aboutPage = function(){
+            window.location = "about.html";
+        };
 
         this.camera = new THREE.PerspectiveCamera(this.fov, window.innerWidth / window.innerHeight, 1, 1000);
         this.cameraHelper = new THREE.CameraHelper(this.camera);
@@ -327,6 +333,8 @@
         var ref = gui.addFolder('更多示例');
         ref.add(config, 'exampleDual').name("全景图配准");
         ref.add(config, 'exampleDual2').name("全景图配准2");
+        ref.add(config, 'exampleDual3').name("全景图配准3");
+        ref.add(config, 'aboutPage').name("About");
 
         animate();
 

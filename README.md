@@ -29,3 +29,9 @@ Panorama image viewer 全景图查看器
 Tools:
 
 -   [Image Eraser by Akshay Bhat](https://www.eraseimage.com/)
+
+---
+
+Notes:
+
+-   [Spherical Projection](http://stemkoski.github.io/Three.js/Sphere-Project.html)

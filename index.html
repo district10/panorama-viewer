@@ -3,6 +3,7 @@
 <head>
     <title>全景图查看器</title>
     <meta charset="utf-8">
+    <link rel="stylesheet" href="css/dat-gui-light-theme.css" type="text/css" />
     <meta name="viewport" content="user-scalable=no, initial-scale=1">
     <style>
         body {
@@ -58,7 +59,7 @@
         }
     </style>
 </head>
-<body>
+<body class="tab">
 
 <div class="qr" id="qr"><a href="https://github.com/district10/panorama-viewer" title="扫码：在移动端打开；点击：Fork me on GitHub"><img src="qr.png" alt="" style="width:150px;height:150px" /></a></div>
 <div id="container"></div>
@@ -67,7 +68,10 @@
 <div class="pic"><a title="点击查看原图" href="texture1.jpg" target="_blank"><img id="pic" src="texture1.jpg" style="width:300px;height:150px;" alt="原图" /></a></div>
 
 <script src="js/jquery.min.js"></script>
-<script src="js/three.min.js"></script>
+<!--
+    <script src="js/three.min.js"></script>
+-->
+<script src="js/three.js"></script>
 <script src="js/CanvasRenderer.js"></script>
 <script src="js/Projector.js"></script>
 <script src="js/Detector.js"></script>
@@ -214,7 +218,7 @@
         if( Detector.webgl ){
             renderer = new THREE.WebGLRenderer({
                 antialias: true
-            //  , preserveDrawingBuffer: true
+              , preserveDrawingBuffer: true
             });
         } else {
             renderer = new THREE.CanvasRenderer();

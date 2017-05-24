@@ -1,0 +1,62 @@
+.tab .dg.main.taller-than-window .close-button {
+    border-top: 1px solid #ddd;
+}
+
+.tab .dg.main .close-button {
+    background-color: #e8e8e8;
+}
+
+.tab .dg.main .close-button:hover {
+    background-color: #ddd;
+}
+
+.tab .dg {
+    color: #555;
+    text-shadow: none !important;
+}
+
+.tab .dg.main::-webkit-scrollbar {
+    background: #fafafa;
+}
+
+.tab .dg.main::-webkit-scrollbar-thumb {
+    background: #bbb;
+}
+
+.tab .dg li:not(.folder) {
+    background: #fafafa;
+    border-bottom: 1px solid #ddd;
+}
+
+.tab .dg li.save-row .button {
+    text-shadow: none !important;
+}
+
+.tab .dg li.title {
+    background: #e8e8e8 url(data:image/gif;base64,R0lGODlhBQAFAJEAAP////Pz8////////yH5BAEAAAIALAAAAAAFAAUAAAIIlI+hKgFxoCgAOw==) 6px 10px no-repeat;
+}
+
+.tab .dg .cr.function:hover,.tab .dg .cr.boolean:hover {
+    background: #fff;
+}
+
+.tab .dg .c input[type=text] {
+    background: #e9e9e9;
+}
+
+.tab .dg .c input[type=text]:hover {
+    background: #eee;
+}
+
+.tab .dg .c input[type=text]:focus {
+    background: #eee;
+    color: #555;
+}
+
+.tab .dg .c .slider {
+    background: #e9e9e9;
+}
+
+.tab .dg .c .slider:hover {
+    background: #eee;
+}

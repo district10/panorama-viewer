@@ -1,10 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <title>全景过渡 3</title>
+    <title>全景过渡 4</title>
     <meta charset="utf-8">
     <meta name="viewport" content="user-scalable=no, initial-scale=1">
-    <link rel="stylesheet" href="css/jquery.contextMenu.css" type="text/css"/>
     <style>
         body {
             margin: 0px;
@@ -27,37 +26,6 @@
         }
         .pic1 { left:  0px; }
         .pic2 { right: 0px; }
-
-        #context-menu {
-            // visibility: hidden;
-            background-color: white;
-            border: 1px solid grey;
-            width: 200px;
-            height: 300px;
-        }
-        .labels > span > ul {
-            margin: 0;
-            padding: 0;
-            list-style: none;
-            display: block;
-            float: none;
-        }
-        .labels > span > ul > li {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 1px solid #CCC;
-            overflow: hidden;
-            text-indent: -2000px;
-        }
-        .labels > span > ul > li.selected,
-        .labels > span > ul > li:hover { border: 1px solid #000; }
-        .labels > span > ul > li + li { margin-left: 5px; }
-        .labels > span > ul > li.label1 { background: red; }
-        .labels > span > ul > li.label2 { background: green; }
-        .labels > span > ul > li.label3 { background: blue; }
-        .labels > span > ul > li.label4 { background: yellow; }
-
         .log {
             position: absolute;
             left: 0px;
@@ -100,7 +68,6 @@
 <script src="js/DeviceOrientationControls.js"></script>
 <script src="js/dat.gui.min.js"></script>
 <script src="js/jquery.ui.position.js"></script>
-<script src="js/jquery.contextMenu.js"></script>
 <script src="js/CubemapToEquirectangular.js"></script>
 <script src="js/tween.min.js"></script>
 
@@ -109,20 +76,12 @@
 
     var Config = function() {
         var _this = this;
-        this.debug = true;
-
-        this.shits = [];
-        this.showShits = function() { config.shits.forEach(function(g){g.visible = true;}); };
-        this.hideShits = function() { config.shits.forEach(function(g){g.visible = false;}); };
-
         this.clock = new THREE.Clock();
 
         this.saveAsImage = function() {
-            setTimeout(function(){
-                var src = renderer.domElement.toDataURL("image/png"); // .replace("image/png", "image/octet-stream");  // here is the most important part because if you dont replace you will get a DOM 18 exception.
-                window.open(src, '_blank');
-                window.focus();
-            }, 3000);
+            var src = renderer.domElement.toDataURL("image/png"); // .replace("image/png", "image/octet-stream");  // here is the most important part because if you dont replace you will get a DOM 18 exception.
+            window.open(src, '_blank');
+            window.focus();
         };
 
         this.featurePointScale = 1.0;
@@ -296,7 +255,7 @@
 
     config.ws = config.hs = 20; // 10;
     config.arcs = [];
-    config.doit = function() {
+    config.applyMeridians = function() {
         // ceiling
         config.arc12 = lerpArc("P1", "P2", config.ws);
         config.arc23 = lerpArc("P2", "P3", config.hs);
@@ -380,32 +339,11 @@
         scene.add(config.face5);
         scene.add(config.face6);
     };
-    gui.add(config, 'doit').name("内插上表面");
-
-    [1,2,3,4,5,6].forEach(function(index){
-        config["applyFace"+index] = function() {
-            var idx = index;
-            return function() {
-                applyFace(idx);
-            };
-        }();
-    });
-    config["applyFace"] = function() {
-        [1,2,3,4,5,6].forEach(function(idx){
-            applyFace(idx);
-        });
+    gui.add(config, 'applyMeridians').name("内插上表面");
+    config.applyFaces = function() {
+        applyFaces();
     };
-    var applyFaces = gui.addFolder("添加页面");
-    applyFaces.add(config, 'applyFace').name("Face ALL");
-    applyFaces.add(config, 'applyFace1').name("Face 1");
-    applyFaces.add(config, 'applyFace2').name("Face 2");
-    applyFaces.add(config, 'applyFace3').name("Face 3");
-    applyFaces.add(config, 'applyFace4').name("Face 4");
-    applyFaces.add(config, 'applyFace5').name("Face 5");
-    applyFaces.add(config, 'applyFace6').name("Face 6");
-    // gui.add(config, 'loadPOI').name("加载 POI 点");
-    // gui.add(config, 'savePOI').name("保存 POI 点");
-    // gui.add(config, 'raycastUV').listen().name("Raycast UV");
+    gui.add(config, 'applyFaces').name("投影");
 
     function updateGroup2Position() {
         var theta = THREE.Math.degToRad(config.group2OffsetNorth);
@@ -727,8 +665,7 @@
         if(Detector.webgl){
             renderer = new THREE.WebGLRenderer({
                 antialias: true,
-                preserveDrawingBuffer: true,
-                alpha: true
+                preserveDrawingBuffer: true
             });
         } else {
             renderer = new THREE.CanvasRenderer();
@@ -920,9 +857,6 @@
                 var plane = new THREE.Plane(new THREE.Vector3(0,1,0), i < 4 ? -200 : 200);
                 var point = plane.intersectLine(line);
                 var arrow = config["arr"+(i+1)];
-                if (config.debug === true) {
-                    arrow.visible = false;
-                }
                 if (point) {
                     point.valid = true;
                     var length = point.length();
@@ -985,9 +919,6 @@
         config.camera2.updateProjectionMatrix(); config.cam2Helper.update();
         config.cameraX.updateProjectionMatrix(); config.camXHelper.update();
 
-        if (config.debug === true) {
-            config.mesh2.visible = false;
-        }
         renderer.render( scene, camera );
     };
 
@@ -1060,132 +991,6 @@
     }
 
     // gui.remember(config);
-
-    /*
-    $.contextMenu.types.label = function(item, opt, root) {
-        $('<span>Label<ul>'
-            + '<li class="label1" title="label 1">label 1</li>'
-            + '<li class="label2" title="label 2">label 2</li>'
-            + '<li class="label3" title="label 3">label 3</li>'
-            + '<li class="label4" title="label 4">label 4</li></ul></span>')
-            .appendTo(this)
-            .on('click', 'li', function() {
-                // do some funky stuff
-                console.log('Clicked on ' + $(this).text());
-                // hide the menu
-                // root.$menu.trigger('contextmenu:hide');
-            });
-        this.addClass('labels').on('contextmenu:focus', function(e) {
-            // setup some awesome stuff
-        }).on('contextmenu:blur', function(e) {
-            // tear down whatever you did
-        }).on('keydown', function(e) {
-            // some funky key handling, maybe?
-        });
-    };
-
-    $.contextMenu({
-        selector: 'body',
-        build: function($triggerElement, event) {
-            // if (config.hoveredPOI) { }
-            return {};
-            return {
-                selectableSubMenu: true,
-                callback: function (key, opt) {
-                    console.log("Clicked on " + key + " on element " + opt.$trigger.attr("id"));
-                    console.log("Clicked on " + $triggerElement + " on element " + event);
-                },
-                // animation: "{duration: 250, show: 'fadeIn', hide: 'fadeOut'}",
-                // autoHide: true, // buggy on chrome
-                // className: 'contextmenu-custom contextmenu-custom',
-                events: {
-                    show: function (options) {
-                        // ...
-                    },
-                    hide: function (options) {
-                        // ...
-                    }
-                },
-                items: {
-                    copy: {
-                        name: "Copy close",
-                        icon: "edit",
-                        // accesskey: "cool word" // c
-                        // accesskey: "cool word" // w
-                        callback: function (key, opt) {
-                            console.log("copy close");
-                            return true; // close
-                        }
-                    },
-                    copy2: {
-                        name: "Copy open",
-                        icon: "edit",
-                        callback: function (key, opt) {
-                            console.log("copy not close");
-                            return false;
-                        }
-                    },
-                    copy3: {
-                        name: "Copy default callback",
-                        icon: "edit"
-                    },
-                    sep1: "---------",
-                    saveAsImage: {
-                        name: "Save",
-                        icon: "cut",
-                        callback: function (key, opt) {
-                            var $a = $("<a></a>");
-                            $a[0].download = 'image.png';
-                            $a[0].href = renderer.domElement.toDataURL();
-                            $a.click();
-                        }
-                    },
-                    label: {
-                        type: 'label',
-                        customName: 'label',
-                        callback: function (key, opt) {
-                            return false; // open
-                        }
-                    },
-                    sep2: "---------",
-                    cut: {
-                        name: "如果是 cam0 则 disabled",
-                        icon: "cut",
-                        disabled: function () {
-                            return camera.isCam0 || false;
-                        }
-                    },
-                    fold1: {
-                        "name": "Sub group",
-                        "items": {
-                            "fold1-key1": {"name": "Foo bar"},
-                            "fold2": {
-                                "name": "Sub group 2",
-                                "items": {
-                                    "fold2-key1": {"name": "alpha"},
-                                    "fold2-key2": {"name": "bravo"},
-                                    "fold2-key3": {"name": "charlie"}
-                                }
-                            },
-                            "fold1-key3": {"name": "delta"}
-                        }
-                    }
-                }
-            };
-        }
-    });
-    */
-
-    var toggleContext = function() {
-        var show = true;
-        return function(_show){
-            if (_show === undefined) {
-                show = !show;
-                _show = show;
-            }
-            $("body").contextMenu(_show);
-        };
-    }();
 
     function setPOI(poi, json) {
         if (
@@ -1288,7 +1093,6 @@
         config.faces = config.faces || {};
         config.faces[from+"-"+to] = group;
         scene.add(group);
-        config.shits.push(group);
         return group.children;
     };
     // ws, hs 指的是有多少个节点
@@ -1334,7 +1138,6 @@
                 group.add(poi);
             }
         }
-        config.shits.push(group);
         // scene.add(group);
         // return vs;
         group.ws = ws;
@@ -1350,93 +1153,55 @@
         return new THREE.Vector2(lon/360, lat/180+0.5);
     };
 
-    var applyFace = function() {
-        var done = [];
-        return function(id) {
-            if (id === undefined) { return; }
-            if (id in done) {
-                console.log("Won't process "+id+" again.");
-                return;
-            } else {
-                done.push(id);
-            }
-            var face = config["face"+id];
-            if (face === undefined) { return; }
-            if (face.updateMe === undefined) {
-                face.updateMe = true;
-            }
-            if (face.updateMe) {
-                face.updateMe = false;
-                var v1, v2, v3, v4;
-                switch (id) {
-                    case 1:
-                        v1 = config.POIs["P1"].position;
-                        v2 = config.POIs["P2"].position;
-                        v3 = config.POIs["P3"].position;
-                        v4 = config.POIs["P4"].position;
-                        break;
-                    case 2:
-                        v1 = config.POIs["P8"].position;
-                        v2 = config.POIs["P5"].position;
-                        v3 = config.POIs["P6"].position;
-                        v4 = config.POIs["P7"].position;
-                        break;
-                    case 3:
-                        v1 = config.POIs["P3"].position;
-                        v2 = config.POIs["P2"].position;
-                        v3 = config.POIs["P6"].position;
-                        v4 = config.POIs["P7"].position;
-                        break;
-                    case 4:
-                        v1 = config.POIs["P4"].position;
-                        v2 = config.POIs["P8"].position;
-                        v3 = config.POIs["P5"].position;
-                        v4 = config.POIs["P1"].position;
-                        break;
-                    case 5:
-                        v1 = config.POIs["P4"].position;
-                        v2 = config.POIs["P3"].position;
-                        v3 = config.POIs["P7"].position;
-                        v4 = config.POIs["P8"].position;
-                        break;
-                    case 6:
-                        v1 = config.POIs["P1"].position;
-                        v2 = config.POIs["P5"].position;
-                        v3 = config.POIs["P6"].position;
-                        v4 = config.POIs["P2"].position;
-                        break;
-                    default:
-                        console.log("shit!!!!!");
-                        return;
+    var applyFaces = function() {
+        var corner = {};
+        [1,2,3,4,5,6,7,8].forEach(function(index){
+            corner["v"+index]= config.POIs["P"+index].position.clone();
+        });
+        var n1234 = normalOfFour(corner.v1, corner.v2, corner.v3, corner.v4);
+        var n5678 = normalOfFour(corner.v5, corner.v6, corner.v7, corner.v8);
+        var normal = n1234.add(n5678).normalize();
+        var point = new THREE.Vector3();
+        // var plane = new THREE.Plane(normal, -point.dot(normal));
+        var plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, point);
+        config.plane = plane;
+
+        var r15 = getRatio(normal, corner.v1, corner.v5);
+        var r26 = getRatio(normal, corner.v2, corner.v6);
+        var r37 = getRatio(normal, corner.v3, corner.v7);
+        var r48 = getRatio(normal, corner.v4, corner.v8);
+        console.log({
+            r15: r15,
+            r26: r26,
+            r37: r37,
+            r48: r48,
+            r: (r15+r26+r37+r48)/4
+        });
+        return;
+
+        /*
+        var plane = new THREE.Plane(normal, -vc.dot(normal));
+        var group = new THREE.Group();
+        for (var i = 0; i < face.ws; ++i) {
+            for (var j = 0; j < face.hs; ++j) {
+                var index = i*face.ws+j;
+                var poi = face.children[index];
+                var line = new THREE.Line3(new THREE.Vector3(0,0,0), poi.position.clone().setLength(1000000000000));
+                var point = plane.intersectLine(line);
+                if (point) {
+                    tweetTexture(config["plane"+id], i,j, point);
+                } else {
+                    console.log("SHIT.");
                 }
-                var vc = v1.clone().add(v2).add(v3).add(v4).divideScalar(4);
-                vc.multiplyScalar(5);
-                var normal = normalOfFour(v1,v2,v3,v4);
-                var plane = new THREE.Plane(normal, -vc.dot(normal));
-                var group = new THREE.Group();
-                for (var i = 0; i < face.ws; ++i) {
-                    for (var j = 0; j < face.hs; ++j) {
-                        var index = i*face.ws+j;
-                        var poi = face.children[index];
-                        var line = new THREE.Line3(new THREE.Vector3(0,0,0), poi.position.clone().setLength(1000000000000));
-                        var point = plane.intersectLine(line);
-                        if (point) {
-                            tweetTexture(config["plane"+id], i,j, point);
-                            // var poi = addPOIRaw(0, 0, 0, new THREE.Color(1,1,1), point.multiplyScalar(2));
-                            // group.add(poi);
-                        } else {
-                            console.log("FUCK");
-                        }
-                    }
-                }
-                finishTexture(config["plane"+id]);
             }
-            scene.add(group);
-            config["faceMe"+id] = group;
-            config["plane"+id].geometry.verticesNeedUpdate = true;
-            config["plane"+id].geometry.uvsNeedUpdate = true;
         }
-    }();
+        finishTexture(config["plane"+id]);
+        scene.add(group);
+        config["faceMe"+id] = group;
+        config["plane"+id].geometry.verticesNeedUpdate = true;
+        config["plane"+id].geometry.uvsNeedUpdate = true;
+        */
+    };
 
     var normalOfThree = function(v1, v2, v3) {
         var v21 = v1.clone().sub(v2);
@@ -1448,8 +1213,18 @@
     var normalOfFour = function (v1, v2, v3, v4) {
         var n123 = normalOfThree(v1, v2, v3);
         var n134 = normalOfThree(v1, v3, v4);
-        return n123.add(n134).normalize();
+        var v13 = v1.clone().sub(v3);
+        var v24 = v2.clone().sub(v4);
+        var n1324 = v13.cross(v24).normalize();
+        return n123.add(n134).add(n1324).normalize();
     };
+
+    var getRatio = function(up, v1, v2) {
+        var down = up.clone().negate();
+        var a1 = v1.angleTo(up);
+        var a2 = v2.angleTo(down);
+        return Math.cos(a1)*v1.length() / (Math.cos(a2)*v2.length());
+    }
 
 </script>
 

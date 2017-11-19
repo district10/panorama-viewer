@@ -81,8 +81,10 @@
     var Config = function() {
         this.showQR = true;
         this.showLog = false;
+        this.showLonLat = false;
         this.showPic = false;
         this.fov = 75;
+        this.disableGyro = true;
         this.fileInput = $('<input type="file" />');
         this.fileInput.on("change", function(e){
             var f = e.target.files[0];
@@ -97,17 +99,25 @@
         this.loadTexture = function() {
             this.fileInput.click();
         };
-        this.loadTextureTip = "图片拖到页面也可加载";
+        this.loadTextureTip = "全景图拖到页面也可加载";
         this.textureSrc = "texture1.jpg";
         this.resetView = function() {
             this.lon = this.lat = 0;
         };
+
+        this.hideDatGui = function() {
+            gui.closed = true;
+            $('.dg.ac').fadeOut(3000);
+        }
 
         this.autoUpdateLon = false;
         this.lon = 0;
         this.lat = 0;
 
         // examples
+        this.exampleMorph = function() {
+            window.location = 'http://tangzhixiong.com/texture-morpher/dyna_sphere.html';
+        }
         this.exampleDual = function(){
             window.location = "dual.html";
         };
@@ -131,6 +141,7 @@
     if (!isDesktop) {
         config.showQR = false;
         $(".qr").hide();
+        config.disableGyro = false;
     }
     if (!config.showLog) { $(".log").hide(); }
     if (!config.showPic) { $(".pic").hide(); }
@@ -161,9 +172,9 @@
 
         var animate = function(){
             window.requestAnimationFrame( animate );
-            if (isDesktop) {
+            if (isDesktop || config.disableGyro) {
                 if (config.autoUpdateLon) {
-                    config.lon += 0.2;
+                    config.lon += 0.5;
                 }
                 if (config.lon > 360) { config.lon -= 360; }
                 if (config.lon <   0) { config.lon += 360; }
@@ -197,9 +208,7 @@
         camera.target = new THREE.Vector3( 0, 0, 0 );
 
         controls = new THREE.DeviceOrientationControls( camera );
-        if (isDesktop) {
-            controls.enabled = false;
-        }
+        controls.enabled = !config.disableGyro;
 
         scene = new THREE.Scene();
         scene.add(config.cameraHelper);
@@ -267,7 +276,12 @@
                     "right": "",
                     "top": "",
                     "bottom": bottom
-                }).show();
+                });
+            }
+            if (config.showLonLat) {
+                $cursor.show();
+            } else {
+                $cursor.hide();
             }
         }, false );
         container.addEventListener( 'mouseup', function(event) {
@@ -300,42 +314,55 @@
             document.body.style.opacity = 1;
         }, false );
 
-        gui.add(config, 'fov').min(10).max(100).step(1).listen().name("视场角").onChange(function(value){
+        container.addEventListener("mousedown",  function() { $('.dg.ac').show(); }, false);
+        container.addEventListener("touchstart", function() { $('.dg.ac').show(); }, false);
+
+        gui.add(config, 'fov').min(10).max(150).step(1).listen().name("视场角").onChange(function(value){
             if (config.fov !== camera.fov) {
                 camera.fov = value;
                 camera.updateProjectionMatrix();
             }
         });
-        gui.add(config.cameraHelper, 'visible').name("显示十字丝").listen();
-        gui.add(config, 'showPic').name("显示原图").onFinishChange(function(show){
-            if (show) { $(".pic").show(); } else { $(".pic").hide(); }
-        });
-        gui.add(config, 'showLog').name("显示调试信息").onFinishChange(function(show){
-            if (show) { $(".log").show(); } else { $(".log").hide(); }
-        });
-        gui.add(config, 'showQR').name("显示二维码").onFinishChange(function(show){
-            if (show) { $(".qr").show(); } else { $(".qr").hide(); }
-        });
 
         var tex = gui.addFolder('全景图'); tex.closed = false;
-        tex.add(config, 'loadTexture').name("选择全景图");
+        tex.add(config, 'loadTexture').name("☞ 选择本地全景图");
         tex.add(config, 'textureSrc', { "仪器馆1": "texture1.jpg", "仪器馆2": "texture2.jpg", "Three.js 图": "texture.jpg" } ).onChange(function(value){
             loadTexture( value );
-        }).name("切换全景图");
+        }).name("☞ 切换预设全景图");
         tex.add(config, 'loadTextureTip').name("Tip");
 
-        if (isDesktop) {
-            var nav = gui.addFolder('导航');
-            nav.add(config, 'resetView').name("重置方向");
-            nav.add(config, 'autoUpdateLon').name("水平自动浏览");
-            nav.add(config, 'lon').min(0).max(360).step(1).name("Lon").listen();
-            nav.add(config, 'lat').min(-85).max(85).step(1).name("Lat").listen();
+        var nav = gui.addFolder('导航');
+        if (!isDesktop) {
+            nav.add(config, 'disableGyro').name("警用手机陀螺仪").listen();
         }
+        nav.add(config, 'resetView').name("重置方向");
+        nav.add(config, 'autoUpdateLon').name("水平自动浏览");
+        nav.add(config, 'lon').min(0).max(360).step(1).name("Lon").listen();
+        nav.add(config, 'lat').min(-85).max(85).step(1).name("Lat").listen();
+
+        var conf = gui.addFolder('配置'); conf.closed = true;
+        conf.add(config, 'showPic').name("显示全景图").onFinishChange(function(show){
+            if (show) { $(".pic").show(); } else { $(".pic").hide(); }
+        });
+        conf.add(config.cameraHelper, 'visible').name("显示十字丝").listen();
+        conf.add(config, 'showLonLat').name("显示经纬度").listen();
+        conf.add(config, 'showQR').name("显示二维码").onFinishChange(function(show){
+            if (show) { $(".qr").show(); } else { $(".qr").hide(); }
+        });
+        conf.add(config, 'showLog').name("显示调试信息").onFinishChange(function(show){
+            if (show) { $(".log").show(); } else { $(".log").hide(); }
+        });
+
         var ref = gui.addFolder('更多示例');
-        ref.add(config, 'exampleDual').name("全景图配准");
-        ref.add(config, 'exampleDual2').name("全景图配准2");
-        ref.add(config, 'exampleDual3').name("全景图配准3");
+        ref.add(config, 'exampleMorph').name("全景图自然过渡 *");
+        ref.add(config, 'exampleDual').name("全景图配准 (desktop only)");
+        ref.add(config, 'exampleDual2').name("全景图配准2 (desktop only)");
+        ref.add(config, 'exampleDual3').name("全景图配准3 (desktop only)");
         ref.add(config, 'aboutPage').name("About");
+
+        gui.add(config, 'hideDatGui').name("隐藏控件");
+
+        $('input:text').attr('disabled', true)
 
         animate();
 

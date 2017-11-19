@@ -78,6 +78,56 @@
 <script>
     "use strict";
 
+    function loadTexture(url) {
+        if (!url) { return; }
+        var loadWhenReady = function(url) {
+            if (material && material.map && material.map.image) {
+                $("#pic")[0].src = $("#pic").parent()[0].href = url;
+                material.map.image.src = url;
+                material.map.needsUpdate = true;
+            } else {
+                setTimeout(function() { loadWhenReady(url); }, 100);
+            }
+        }
+        loadWhenReady(url);
+    }
+
+    function toDataURL(url, callback) {
+        var xhr = new XMLHttpRequest();
+        xhr.onload = function() {
+            var reader = new FileReader();
+            reader.onloadend = function() {
+                callback(reader.result);
+            }
+            reader.readAsDataURL(xhr.response);
+        };
+        xhr.open('GET', url);
+        xhr.responseType = 'blob';
+        xhr.send();
+    }
+
+    function loadTextureUrl(url) {
+        if (!url) { return; }
+        toDataURL(url, loadTexture);
+    }
+
+    function getQueryStrings() {
+        var assoc  = {};
+        var decode = function (s) { return decodeURIComponent(s.replace(/\+/g, " ")); };
+        var queryString = location.search.substring(1);
+        var keyValues = queryString.split('&');
+        for(var i in keyValues) {
+            var key = keyValues[i].split('=');
+            if (key.length > 1) { assoc[decode(key[0])] = decode(key[1]); }
+        }
+        return assoc;
+    }
+    var queryStrings = getQueryStrings();
+    if (queryStrings.title) {
+        document.title = queryStrings.title;
+    }
+    loadTextureUrl(queryStrings.src);
+
     var Config = function() {
         this.showQR = true;
         this.showLog = false;
@@ -99,6 +149,10 @@
         this.loadTexture = function() {
             this.fileInput.click();
         };
+        this.loadTextureByUrl = function() {
+            var url = prompt("请输入全景图 Url", "http://7ximr7.com1.z0.glb.clouddn.com/38424910751_50221c2b8f_k.jpg");
+            loadTextureUrl(url);
+        }
         this.loadTextureTip = "全景图拖到页面也可加载";
         this.textureSrc = "texture1.jpg";
         this.resetView = function() {
@@ -162,12 +216,6 @@
     var phi = 0, theta = 0;
     var onPointerDownPointerX = 0, onPointerDownPointerY = 0, onPointerDownLon = 0, onPointerDownLat = 0;
 
-    function loadTexture(url) {
-        $("#pic")[0].src = $("#pic").parent()[0].href = url;
-        material.map.image.src = url;
-        material.map.needsUpdate = true;
-    }
-
     window.addEventListener('load', function() {
 
         var animate = function(){
@@ -216,7 +264,7 @@
         var geometry = new THREE.SphereGeometry( 500, 64, 32 );
         geometry.scale( - 1, 1, 1 );
         material = new THREE.MeshBasicMaterial( {
-            map: new THREE.TextureLoader().load( 'texture1.jpg' )
+            map: new THREE.TextureLoader().load( config.textureSrc )
         } );
         var mesh = new THREE.Mesh( geometry, material );
         scene.add( mesh );
@@ -326,6 +374,7 @@
 
         var tex = gui.addFolder('全景图'); tex.closed = false;
         tex.add(config, 'loadTexture').name("☞ 选择本地全景图");
+        tex.add(config, 'loadTextureByUrl').name("☞ 选择线上全景图");
         tex.add(config, 'textureSrc', { "仪器馆1": "texture1.jpg", "仪器馆2": "texture2.jpg", "Three.js 图": "texture.jpg" } ).onChange(function(value){
             loadTexture( value );
         }).name("☞ 切换预设全景图");

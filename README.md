@@ -7,6 +7,13 @@ Panorama image viewer 全景图查看器
 
 如果 GitHub 加载慢, 可以用这个: <http://tangzx.qiniudn.com/panorama/>.
 
+## 使用方法
+
+1.  加载本地全景图: 通过选择本地图片文件
+2.  加载线上全景图: 通过输入图片 url
+3.  通过 URL 指定预加载全景图:
+    <http://tangzhixiong.com/panorama-viewer?src=http://7ximr7.com1.z0.glb.clouddn.com/38424910751_50221c2b8f_k.jpg&title=图片来自flickr>
+
 ---
 
 **THREE 自带的图**

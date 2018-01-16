@@ -57,6 +57,44 @@
             border: 1px solid white;
             background-color: rgba(0,0,0,0.4);
         }
+        .bottom-left {
+            position: absolute;
+            left: 0px;
+            bottom: 0px;
+            z-index: 2000;
+        }
+        .bottom-right {
+            position: absolute;
+            right: 0px;
+            bottom: 0px;
+            z-index: 2000;
+        }
+        button {
+            border: 3px solid lightgray;
+            font-size: 60px;
+            color:  rgba(0, 0, 0, .8);
+            line-height: 10px;
+            padding-bottom: 10px;
+            margin: 10px;
+            width: 80px;
+            height: 60px;
+            opacity: 0.3;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            margin-top: -50px;
+            margin-left: -50px;
+            width: 100px;
+            height: 100px;
+            pointer-events: none;
+            font-size: 24px;
+            color: white;
+        }
     </style>
 </head>
 <body class="tab">
@@ -66,6 +104,9 @@
 <div class="log"><pre><code id="log"></code></pre></div>
 <div class="log" id="cursor-log"><pre><code id="cursor-log-code"></code></pre></div>
 <div class="pic"><a title="点击查看原图" href="texture1.jpg" target="_blank"><img id="pic" src="texture1.jpg" style="width:300px;height:150px;" alt="原图" /></a></div>
+<div class="loading">loading...</span></div>
+<div class="bottom-left"><button onclick="navToPrev()">&lt;</button></div>
+<div class="bottom-right"><button onclick="navToNext()">&gt;</button></div>
 
 <script src="js/jquery.min.js"></script>
 <script src="js/three.js"></script>
@@ -78,18 +119,42 @@
 <script>
     "use strict";
 
+    hideLoading();
+
+    function navToNext() {
+        var keys = Object.keys(config.textureSrcOptions);
+        config.textureSrcIndex = ++config.textureSrcIndex % keys.length;
+        loadTextureUrl(config.textureSrc = config.textureSrcOptions[keys[config.textureSrcIndex]]);
+    }
+
+    function navToPrev() {
+        var keys = Object.keys(config.textureSrcOptions);
+        config.textureSrcIndex = --config.textureSrcIndex % keys.length;
+        loadTextureUrl(config.textureSrc = config.textureSrcOptions[keys[config.textureSrcIndex]]);
+    }
+
     function loadTexture(url) {
         if (!url) { return; }
+        config.hideDatGui();
         var loadWhenReady = function(url) {
             if (material && material.map && material.map.image) {
                 $("#pic")[0].src = $("#pic").parent()[0].href = url;
                 material.map.image.src = url;
                 material.map.needsUpdate = true;
+                hideLoading();
             } else {
                 setTimeout(function() { loadWhenReady(url); }, 100);
             }
         }
         loadWhenReady(url);
+    }
+
+    function showLoading() {
+        $(".loading").show();
+    }
+
+    function hideLoading() {
+        $(".loading").hide();
     }
 
     function toDataURL(url, callback) {
@@ -103,6 +168,7 @@
         };
         xhr.open('GET', url);
         xhr.responseType = 'blob';
+        showLoading();
         xhr.send();
     }
 
@@ -112,19 +178,26 @@
         }, 'text');
     }
 
-    function loadTextureUrl(url) {
+    function loadTextureUrl(url, queryStrings) {
         if (!url) { return; }
         if (url.endsWith && url.endsWith(".json")) {
-            loadProject(url);
+            loadProject(url, queryStrings);
         } else {
             toDataURL(url, loadTexture);
         }
     }
 
-    function loadProject(jsonUrl) {
-        toJSON(jsonUrl, function(d){
-            console.log(d);
+    function loadProject(jsonUrl, queryStrings) {
+        toJSON(jsonUrl, function(siteInfo){
+            setWindowTitle(siteInfo.title || window.title);
+            config.textureSrc = siteInfo.sites[Object.keys(siteInfo.sites)[0]];
+            config.textureSrcOptions = siteInfo.sites;
+            toDataURL(config.textureSrc, loadTexture);
         });
+    }
+
+    function setWindowTitle(title) {
+        document.title = queryStrings.title;
     }
 
     function getQueryStrings() {
@@ -140,9 +213,8 @@
     }
     var queryStrings = getQueryStrings();
     if (queryStrings.title) {
-        document.title = queryStrings.title;
+        setWindowTitle(queryStrings.title);
     }
-    loadTextureUrl(queryStrings.src);
 
     var Config = function() {
         this.showQR = true;
@@ -155,6 +227,7 @@
         this.fileInput.on("change", function(e){
             var f = e.target.files[0];
             if (f) {
+                showLoading();
                 var r = new FileReader();
                 r.onload = function(event) {
                     loadTexture( event.target.result );
@@ -171,6 +244,7 @@
         }
         this.loadTextureTip = "全景图拖到页面也可加载";
         this.textureSrc = "texture1.jpg";
+        this.textureSrcOptions = { "仪器馆1": "texture1.jpg", "仪器馆2": "texture2.jpg", "Three.js 图": "texture.jpg" };
         this.resetView = function() {
             this.lon = this.lat = 0;
         };
@@ -206,6 +280,8 @@
         this.cameraHelper.visible = false;
     };
     var config = new Config();
+
+    loadTextureUrl(queryStrings.src, queryStrings);
 
     var isDesktop = !navigator.userAgent.match(/(iPhone|iPod|iPad|Android|BlackBerry|BB10|mobi|tablet|opera mini|nexus 7)/i);
     if (!isDesktop) {
@@ -387,14 +463,20 @@
                 camera.updateProjectionMatrix();
             }
         });
-
         var tex = gui.addFolder('全景图'); tex.closed = false;
+        gui.tex = tex;
+        tex.add(config, 'loadTextureTip').name("Tip");
         tex.add(config, 'loadTexture').name("☞ 选择本地全景图");
         tex.add(config, 'loadTextureByUrl').name("☞ 选择线上全景图");
-        tex.add(config, 'textureSrc', { "仪器馆1": "texture1.jpg", "仪器馆2": "texture2.jpg", "Three.js 图": "texture.jpg" } ).onChange(function(value){
-            loadTexture( value );
-        }).name("☞ 切换预设全景图");
-        tex.add(config, 'loadTextureTip').name("Tip");
+        config.reOption = function() {
+            if (gui.currentOptions) { gui.tex.remove(gui.currentOptions); }
+            config.textureSrcIndex = 0;
+            gui.currentOptions = gui.tex.add(config, 'textureSrc',  config.textureSrcOptions)
+                .onChange(function (value) {
+                    loadTexture(value);
+                }).name("☞ 切换预设全景图");
+        };
+        config.reOption();
 
         var nav = gui.addFolder('导航');
         if (!isDesktop) {

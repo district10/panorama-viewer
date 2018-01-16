@@ -106,9 +106,25 @@
         xhr.send();
     }
 
+    function toJSON(url, callback) {
+        $.get(url, function (data) {
+            callback(JSON.parse(data));
+        }, 'text');
+    }
+
     function loadTextureUrl(url) {
         if (!url) { return; }
-        toDataURL(url, loadTexture);
+        if (url.endsWith && url.endsWith(".json")) {
+            loadProject(url);
+        } else {
+            toDataURL(url, loadTexture);
+        }
+    }
+
+    function loadProject(jsonUrl) {
+        toJSON(jsonUrl, function(d){
+            console.log(d);
+        });
     }
 
     function getQueryStrings() {

@@ -13,6 +13,24 @@ Panorama image viewer 全景图查看器
 2.  加载线上全景图: 通过输入图片 url
 3.  通过 URL 指定预加载全景图:
     <http://tangzhixiong.com/panorama-viewer?src=http://7ximr7.com1.z0.glb.clouddn.com/38424910751_50221c2b8f_k.jpg&title=图片来自flickr>
+4.  通过 URL 指定预加载多张全景图:
+    <http://tangzhixiong.com/panorama-viewer?src=yellow-crane-tower.json>
+    其中 json 文件的格式为:
+
+    ```json
+    {
+        "title": "黄鹤楼 (Yellow Crane Tower)",
+        "sites": {
+            "site 1": "images/yellow-crane-tower/1_minified.jpg",
+            "site 2": "images/yellow-crane-tower/2_minified.jpg",
+            "site 3": "images/yellow-crane-tower/3_minified.jpg",
+            "site 4": "images/yellow-crane-tower/4_minified.jpg",
+            "site 5": "images/yellow-crane-tower/5_minified.jpg",
+            "site 6": "images/yellow-crane-tower/6_minified.jpg",
+            "site 7": "images/yellow-crane-tower/7_minified.jpg"
+        }
+    }
+    ```
 
 ---
 

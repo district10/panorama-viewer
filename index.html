@@ -3,19 +3,22 @@
 <head>
     <title>全景图查看器</title>
     <meta charset="utf-8">
-    <link rel="stylesheet" href="css/dat-gui-light-theme.css" type="text/css" />
+    <meta author="TANG ZhiXiong (district10)">
+    <meta description="A Easy to Use Panorama Viewer">
+    <meta keywords="panorama; viewer; static offline version;">
     <meta name="viewport" content="user-scalable=no, initial-scale=1">
+    <link rel="stylesheet" href="css/dat-gui-light-theme.css" type="text/css" />
     <style>
         body {
-            margin: 0px;
+            margin: 0;
             overflow: hidden;
             z-index: -1000;
         }
 
         .qr {
             position: absolute;
-            left: 0px;
-            top: 0px;
+            left: 0;
+            top: 0;
             margin: 0 auto;
             overflow: hidden;
             z-index: 1000;
@@ -27,8 +30,8 @@
 
         .log {
             position: absolute;
-            left: 0px;
-            bottom: 0px;
+            left: 0;
+            bottom: 0;
             margin: 2px;
             padding: 2px;
             border: 1px solid white;
@@ -36,22 +39,22 @@
             font-size: 8px;
             max-width: 50%;
             max-height: 60%;
-            min-width: 200px;
+            min-width: 200;
             background-color: rgba(0,0,0,0.4);
             overflow-y: auto;
             z-index: 1000;
         }
         #cursor-log {
             margin: 0;
-            padding: 10px;
+            padding: 10;
             border: none;
-            min-width: 0px;
-            min-height: 0px;
+            min-width: 0;
+            min-height: 0;
         }
         .pic {
             position: absolute;
-            right: 0px;
-            bottom: 0px;
+            right: 0;
+            bottom: 0;
             margin: 2px;
             padding: 2px;
             border: 1px solid white;
@@ -59,25 +62,25 @@
         }
         .bottom-left {
             position: absolute;
-            left: 0px;
-            bottom: 0px;
+            left: 0;
+            bottom: 0;
             z-index: 2000;
         }
         .bottom-right {
             position: absolute;
-            right: 0px;
-            bottom: 0px;
+            right: 0;
+            bottom: 0;
             z-index: 2000;
         }
         button {
             border: 3px solid lightgray;
-            font-size: 60px;
+            font-size: 60;
             color:  rgba(0, 0, 0, .8);
-            line-height: 10px;
-            padding-bottom: 10px;
-            margin: 10px;
-            width: 80px;
-            height: 60px;
+            line-height: 10;
+            padding-bottom: 10;
+            margin: 10;
+            width: 80;
+            height: 60;
             opacity: 0.3;
         }
         button:hover {
@@ -87,10 +90,10 @@
             position: absolute;
             top: 50%;
             left: 50%;
-            margin-top: -50px;
-            margin-left: -50px;
-            width: 100px;
-            height: 100px;
+            margin-top: -50;
+            margin-left: -50;
+            width: 100;
+            height: 100;
             pointer-events: none;
             font-size: 24px;
             color: white;
@@ -99,11 +102,11 @@
 </head>
 <body class="tab">
 
-<div class="qr" id="qr"><a href="https://github.com/district10/panorama-viewer" title="扫码：在移动端打开；点击：Fork me on GitHub"><img src="qr.png" alt="" style="width:150px;height:150px" /></a></div>
+<div class="qr" id="qr"><a href="https://github.com/district10/panorama-viewer" title="扫码：在移动端打开；点击：Fork me on GitHub"><img src="qr.png" alt="" style="width:150;height:150px" /></a></div>
 <div id="container"></div>
 <div class="log"><pre><code id="log"></code></pre></div>
 <div class="log" id="cursor-log"><pre><code id="cursor-log-code"></code></pre></div>
-<div class="pic"><a title="点击查看原图" href="texture1.jpg" target="_blank"><img id="pic" src="texture1.jpg" style="width:300px;height:150px;" alt="原图" /></a></div>
+<div class="pic"><a title="点击查看原图" href="texture1.jpg" target="_blank"><img id="pic" src="texture1.jpg" style="width:300;height:150px;" alt="原图" /></a></div>
 <div class="loading">loading...</span></div>
 <div class="bottom-left"><button onclick="navToPrev()">&lt;</button></div>
 <div class="bottom-right"><button onclick="navToNext()">&gt;</button></div>
@@ -119,19 +122,36 @@
 <script>
     "use strict";
 
+    function debug(msg) { $("#log")[0].innerHTML = msg; }
+
+    function setWindowTitle(title) { if (title) { document.title = title; } }
+    function getQueryStrings() {
+        var assoc  = {};
+        var decode = function (s) { return decodeURIComponent(s.replace(/\+/g, " ")); };
+        var queryString = location.search.substring(1);
+        var keyValues = queryString.split('&');
+        for(var i in keyValues) {
+            var key = keyValues[i].split('=');
+            if (key.length > 1) { assoc[decode(key[0])] = decode(key[1]); }
+        }
+        return assoc;
+    }
+    var queryStrings = getQueryStrings();
+    if (queryStrings.title) {
+        setWindowTitle(queryStrings.title);
+    }
+
+    function navTo(delta) {
+        var keys = Object.keys(config.textureSrcOptions);
+        config.textureSrcIndex = (delta+config.textureSrcIndex) % keys.length;
+        loadTextureUrl(config.textureSrc = config.textureSrcOptions[keys[config.textureSrcIndex]]);
+    }
+    function navToNext() { navTo(1); }
+    function navToPrev() { navTo(-1); }
+
+    function showLoading() { $(".loading").show(); }
+    function hideLoading() { $(".loading").hide(); }
     hideLoading();
-
-    function navToNext() {
-        var keys = Object.keys(config.textureSrcOptions);
-        config.textureSrcIndex = ++config.textureSrcIndex % keys.length;
-        loadTextureUrl(config.textureSrc = config.textureSrcOptions[keys[config.textureSrcIndex]]);
-    }
-
-    function navToPrev() {
-        var keys = Object.keys(config.textureSrcOptions);
-        config.textureSrcIndex = --config.textureSrcIndex % keys.length;
-        loadTextureUrl(config.textureSrc = config.textureSrcOptions[keys[config.textureSrcIndex]]);
-    }
 
     function loadTexture(url) {
         if (!url) { return; }
@@ -147,14 +167,6 @@
             }
         }
         loadWhenReady(url);
-    }
-
-    function showLoading() {
-        $(".loading").show();
-    }
-
-    function hideLoading() {
-        $(".loading").hide();
     }
 
     function toDataURL(url, callback) {
@@ -189,31 +201,11 @@
 
     function loadProject(jsonUrl, queryStrings) {
         toJSON(jsonUrl, function(siteInfo){
-            setWindowTitle(siteInfo.title || window.title);
+            setWindowTitle(siteInfo.title);
             config.textureSrc = siteInfo.sites[Object.keys(siteInfo.sites)[0]];
             config.textureSrcOptions = siteInfo.sites;
             toDataURL(config.textureSrc, loadTexture);
         });
-    }
-
-    function setWindowTitle(title) {
-        document.title = queryStrings.title;
-    }
-
-    function getQueryStrings() {
-        var assoc  = {};
-        var decode = function (s) { return decodeURIComponent(s.replace(/\+/g, " ")); };
-        var queryString = location.search.substring(1);
-        var keyValues = queryString.split('&');
-        for(var i in keyValues) {
-            var key = keyValues[i].split('=');
-            if (key.length > 1) { assoc[decode(key[0])] = decode(key[1]); }
-        }
-        return assoc;
-    }
-    var queryStrings = getQueryStrings();
-    if (queryStrings.title) {
-        setWindowTitle(queryStrings.title);
     }
 
     var Config = function() {
@@ -244,7 +236,11 @@
         }
         this.loadTextureTip = "全景图拖到页面也可加载";
         this.textureSrc = "texture1.jpg";
-        this.textureSrcOptions = { "仪器馆1": "texture1.jpg", "仪器馆2": "texture2.jpg", "Three.js 图": "texture.jpg" };
+        this.textureSrcOptions = {
+            "仪器馆1": "texture1.jpg",
+            "仪器馆2": "texture2.jpg",
+            "Three.js 图": "texture.jpg"
+        };
         this.resetView = function() {
             this.lon = this.lat = 0;
         };
@@ -258,46 +254,16 @@
         this.lon = 0;
         this.lat = 0;
 
-        // examples
-        this.exampleMorph = function() {
-            window.location = 'http://tangzhixiong.com/texture-morpher/dyna_sphere.html';
-        }
-        this.exampleDual = function(){
-            window.location = "dual.html";
-        };
-        this.exampleDual2 = function(){
-            window.location = "dual2.html";
-        };
-        this.exampleDual3 = function(){
-            window.location = "dual3.html";
-        };
-        this.aboutPage = function(){
-            window.location = "about.html";
-        };
+        this.exampleMorph = function(){ window.location = 'http://tangzhixiong.com/texture-morpher/dyna_sphere.html'; }
+        this.exampleDual  = function(){ window.location = "dual.html"; };
+        this.exampleDual2 = function(){ window.location = "dual2.html"; };
+        this.exampleDual3 = function(){ window.location = "dual3.html"; };
+        this.aboutPage    = function(){ window.location = "about.html"; };
 
         this.camera = new THREE.PerspectiveCamera(this.fov, window.innerWidth / window.innerHeight, 1, 1000);
         this.cameraHelper = new THREE.CameraHelper(this.camera);
         this.cameraHelper.visible = false;
     };
-    var config = new Config();
-
-    loadTextureUrl(queryStrings.src, queryStrings);
-
-    var isDesktop = !navigator.userAgent.match(/(iPhone|iPod|iPad|Android|BlackBerry|BB10|mobi|tablet|opera mini|nexus 7)/i);
-    if (!isDesktop) {
-        config.showQR = false;
-        $(".qr").hide();
-        config.disableGyro = false;
-    }
-    if (!config.showLog) { $(".log").hide(); }
-    if (!config.showPic) { $(".pic").hide(); }
-
-    var gui = new dat.GUI(); gui.closed = true;
-
-    var logElement = $("#log")[0];
-    function debug(msg) {
-        logElement.innerHTML = msg;
-    }
 
     var raycaster = new THREE.Raycaster();
     var mouse = new THREE.Vector2();
@@ -307,6 +273,19 @@
     var isUserInteracting = false;
     var phi = 0, theta = 0;
     var onPointerDownPointerX = 0, onPointerDownPointerY = 0, onPointerDownLon = 0, onPointerDownLat = 0;
+
+    var config = new Config();
+    var gui = new dat.GUI(); gui.closed = true;
+    loadTextureUrl(queryStrings.src, queryStrings);
+
+    var isDesktop = !navigator.userAgent.match(/(iPhone|iPod|iPad|Android|BlackBerry|BB10|mobi|tablet|opera mini|nexus 7)/i);
+    if (!isDesktop) {
+        config.showQR = false;
+        config.disableGyro = false;
+    }
+    if (!config.showLog) { $(".log").hide(); }
+    if (!config.showPic) { $(".pic").hide(); }
+    if (!config.showQR)  { $(".qr").hide(); }
 
     window.addEventListener('load', function() {
 
@@ -389,7 +368,6 @@
             onPointerDownLon = config.lon;
             onPointerDownLat = config.lat;
         }, false );
-        // $("#cursor-log")[0].addEventListener('mousemove', function(event) { });
         container.addEventListener( 'mousemove', function(event) {
             if ( isUserInteracting === true ) {
                 config.lon = ( onPointerDownPointerX - event.clientX ) * 0.1 + onPointerDownLon;
@@ -463,8 +441,8 @@
                 camera.updateProjectionMatrix();
             }
         });
-        var tex = gui.addFolder('全景图'); tex.closed = false;
-        gui.tex = tex;
+
+        var tex = gui.addFolder('全景图'); tex.closed = false; gui.tex = tex;
         tex.add(config, 'loadTextureTip').name("Tip");
         tex.add(config, 'loadTexture').name("☞ 选择本地全景图");
         tex.add(config, 'loadTextureByUrl').name("☞ 选择线上全景图");

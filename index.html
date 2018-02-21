@@ -143,7 +143,7 @@
 
     function navTo(delta) {
         var keys = Object.keys(config.textureSrcOptions);
-        config.textureSrcIndex = (delta+config.textureSrcIndex) % keys.length;
+        config.textureSrcIndex = (delta+config.textureSrcIndex+keys.length) % keys.length;
         loadTextureUrl(config.textureSrc = config.textureSrcOptions[keys[config.textureSrcIndex]]);
     }
     function navToNext() { navTo(1); }

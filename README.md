@@ -7,6 +7,8 @@ Panorama image viewer 全景图查看器
 
 如果 GitHub 加载慢, 可以用这个: <http://tangzx.qiniudn.com/panorama/>.
 
+>   related：全景切换 https://github.com/district10/texture-morpher
+
 ## 使用方法
 
 1.  加载本地全景图: 通过选择本地图片文件
